@@ -11,3 +11,5 @@ TODO:
 * Add tests (ideally - integration tests)
 * Add more robust nodes discovering
 * Add docs and specs
+* Add channels closing support
+* Compare to replicated redis pub/sub
