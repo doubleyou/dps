@@ -5,7 +5,7 @@ clean:
 	./rebar clean
 
 test:
-	./rebar eunit
+	./rebar eunit skip_deps=true
 
 1:
 	erl -pa ebin -s dps -sname node1

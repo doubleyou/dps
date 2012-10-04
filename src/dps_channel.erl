@@ -2,6 +2,7 @@
 -behaviour(gen_server).
 
 -include_lib("stdlib/include/ms_transform.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 -export([start_link/1]).
 -export([init/1,
@@ -21,6 +22,9 @@
          lookup/1,
          msgs_from_peers/2]).
 
+
+-export([table/0]).
+
 -record(state, {
     subscribers = [],
     messages = []
@@ -30,9 +34,13 @@
 %% External API
 %%
 
+% very convenient function to mock global table when testing
+
+table() -> dps_channels.
+
 all() ->
     MS = ets:fun2ms(fun({Tag, _}) -> Tag end),
-    ets:select(dps_channels, MS).
+    ets:select(table(), MS).
 
 new(Tag) ->
     new(Tag, global).
@@ -66,7 +74,7 @@ subscribe(Tag, TS) ->
     gen_server:call(Pid, {subscribe, self(), TS}).
 
 lookup(Tag) ->
-    case ets:lookup(dps_channels, Tag) of
+    case ets:lookup(table(), Tag) of
         [{Tag, Pid}] -> Pid;
         [] -> undefined
     end.
