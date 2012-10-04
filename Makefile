@@ -1,10 +1,13 @@
 all:
 	./rebar compile
 
+full:
+	./rebar get-deps compile
+
 clean:
 	./rebar clean
 
-test:
+test: all
 	./rebar eunit skip_deps=true
 
 1:
