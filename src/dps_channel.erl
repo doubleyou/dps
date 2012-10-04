@@ -48,7 +48,7 @@ new(Tag) ->
 new(Tag, Mode) ->
     Result = case lookup(Tag) of
         undefined ->
-            supervisor:start_child(dps_channels_sup, [Tag]);
+            dps_channels_sup:start_channel(Tag);
         _ ->
             {error, channel_already_exists}
     end,

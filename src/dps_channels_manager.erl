@@ -18,7 +18,7 @@
 %%
 
 start_link() ->
-    ets:new(dps_channels, [public, named_table, set]),
+    ets:new(dps_channel:table(), [public, named_table, set]),
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 register_channel(Tag, Pid) ->
@@ -32,7 +32,7 @@ init(Args) ->
     {ok, Args}.
 
 handle_call({register, Tag, Pid}, _From, State) ->
-    ets:insert(dps_channels, {Tag, Pid}),
+    ets:insert(dps_channel:table(), {Tag, Pid}),
     erlang:monitor(process, Pid),
     {reply, ok, State};
 handle_call(_Msg, _From, State) ->
@@ -43,7 +43,7 @@ handle_cast(_Msg, State) ->
 
 handle_info({'DOWN', _, _, Pid, _}, State) ->
     MS = ets:fun2ms(fun({_, Pid_}) -> Pid_ =:= Pid end),
-    ets:select_delete(dps_channels, MS),
+    ets:select_delete(dps_channel:table(), MS),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
