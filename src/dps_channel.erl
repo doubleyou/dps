@@ -24,7 +24,7 @@
 
 
          messages_limit/0,
-         publish/4,
+         publish_local/3,
          msgs_from_peers/2]).
 
 
@@ -48,27 +48,27 @@ messages_limit() ->
 -spec publish(Tag :: dps:tag(), Msg :: dps:message()) -> TS :: dps:timestamp().
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
-    publish(Tag, Msg, TS, global).
+    gen_server:call(find(Tag), {publish, Msg, TS}),
+    rpc:multicall(nodes(), ?MODULE, publish_local, [Tag, Msg, TS]),
+    TS.
+
+
+-spec publish_local(Tag :: dps:tag(), Msg :: dps:message(), TS :: dps:timestamp()) -> ok.
+publish_local(Tag, Msg, TS) ->
+    try gen_server:call(find(Tag), {publish, Msg, TS})
+    catch
+        throw:{no_channel, Tag} -> ok
+    end.
+
 
 
 
 -spec messages(Tag :: dps:tag(), Timestamp :: dps:timestamp()) -> 
     {ok, TS :: dps:timestamp(), [Message :: term()]}.
-messages(Tag, TS) ->
-    Pid = dps_channels_manager:find(Tag),
-    Pid =/= undefined orelse erlang:error(no_channel),
-    {ok, LastTS, Messages} = gen_server:call(Pid, {messages, TS}),
+messages(Tag, TS) when is_number(TS) ->
+    {ok, LastTS, Messages} = gen_server:call(find(Tag), {messages, TS}),
     {ok, LastTS, Messages}.
 
--spec publish(Tag :: dps:tag(), Msg :: dps:message(), TS :: dps:timestamp(),
-    Mode :: local | global) -> TS :: dps:timestamp().
-publish(Tag, Msg, TS, Mode) ->
-    Pid = dps_channels_manager:find(Tag),
-    Pid =/= undefined orelse erlang:error(no_channel),
-    gen_server:call(Pid, {publish, Msg, TS}),
-    Mode =:= global andalso
-        rpc:multicall(nodes(), ?MODULE, publish, [Tag, Msg, TS, local]),
-    TS.
 
 -spec subscribe(Tag :: dps:tag()) -> Msgs :: non_neg_integer().
 subscribe(Tag) ->
@@ -77,16 +77,18 @@ subscribe(Tag) ->
 -spec subscribe(Tag :: dps:tag(), TS :: dps:timestamp()) ->
                                                     Msgs :: non_neg_integer().
 subscribe(Tag, TS) ->
-    Pid = dps_channels_manager:find(Tag),
-    Pid =/= undefined orelse erlang:error(no_channel),
-    gen_server:call(Pid, {subscribe, self(), TS}).
+    gen_server:call(find(Tag), {subscribe, self(), TS}).
 
 
 
 unsubscribe(Tag) ->
+    gen_server:call(find(Tag), {unsubscribe, self()}).
+
+
+find(Tag) ->
     Pid = dps_channels_manager:find(Tag),
-    Pid =/= undefined orelse erlang:error(no_channel),
-    gen_server:call(Pid, {unsubscribe, self()}).
+    Pid =/= undefined orelse erlang:throw({no_channel,Tag}),
+    Pid.
 
 
 
