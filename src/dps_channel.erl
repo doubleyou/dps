@@ -23,42 +23,49 @@
 
 
 -record(state, {
-    subscribers = [],
-    messages = [],
-    tag
+    subscribers = []    :: list(),
+    messages = []       :: list(),
+    tag                 :: term()
 }).
 
 %%
 %% External API
 %%
 
-% very convenient function to mock global table when testing
-
-
-
+-spec publish(Tag :: term(), Msg :: term()) -> TS :: non_neg_integer().
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
     publish(Tag, Msg, TS, global).
 
+-spec publish(Tag :: term(), Msg :: term(), TS :: non_neg_integer(),
+    Mode :: local | global) -> TS :: non_neg_integer().
 publish(Tag, Msg, TS, Mode) ->
     Pid = dps_channels_manager:find(Tag),
+    Pid =/= undefined orelse erlang:error(no_channel),
     gen_server:call(Pid, {publish, Msg, TS}),
     Mode =:= global andalso
         rpc:multicall(nodes(), ?MODULE, publish, [Tag, Msg, TS, local]),
     TS.
 
+-spec subscribe(Tag :: term()) -> Msgs :: non_neg_integer().
 subscribe(Tag) ->
     subscribe(Tag, 0).
 
+-spec subscribe(Tag :: term(), TS :: non_neg_integer()) ->
+                                                    Msgs :: non_neg_integer().
 subscribe(Tag, TS) ->
     Pid = dps_channels_manager:find(Tag),
+    Pid =/= undefined orelse erlang:error(no_channel),
     gen_server:call(Pid, {subscribe, self(), TS}).
 
 
+-spec msgs_from_peers(Tag :: term(), CallbackPid :: pid()) -> ok.
 msgs_from_peers(Tag, CallbackPid) ->
     Pid = dps_channels_manager:find(Tag),
-    Pid ! {give_me_messages, CallbackPid}.
+    Pid ! {give_me_messages, CallbackPid},
+    ok.
 
+-spec start_link(Tag :: term()) -> Result :: {ok, pid()} | {error, term()}.
 start_link(Tag) ->
     gen_server:start_link(?MODULE, Tag, []).
 
@@ -66,6 +73,7 @@ start_link(Tag) ->
 %% gen_server callbacks
 %%
 
+-spec init(Tag :: term()) -> {ok, #state{}}.
 init(Tag) ->
     self() ! replicate_from_peers,
     {ok, #state{tag = Tag}}.
@@ -117,6 +125,7 @@ terminate(_Reason, _State) ->
 %% Internal functions
 %%
 
+-spec later_than(TS :: non_neg_integer(), Messages :: list()) -> Msgs :: list().
 later_than(TS, Messages) ->
     lists:takewhile(
         fun({TS_, _}) ->
