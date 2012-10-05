@@ -15,6 +15,10 @@
          terminate/2]).
 
 -export([publish/2,
+         messages/2,
+
+
+
          publish/4,
          subscribe/1,
          subscribe/2,
@@ -25,6 +29,7 @@
 -record(state, {
     subscribers = []    :: list(),
     messages = []       :: list(),
+    last_ts,
     tag                 :: term()
 }).
 
@@ -36,6 +41,16 @@
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
     publish(Tag, Msg, TS, global).
+
+
+
+-spec messages(Tag :: term(), Timestamp :: non_neg_integer() | undefined) -> 
+    {ok, TS :: non_neg_integer() | undefined, [Message :: term()]}.
+messages(Tag, TS) ->
+    Pid = dps_channels_manager:find(Tag),
+    Pid =/= undefined orelse erlang:error(no_channel),
+    {ok, LastTS, Messages} = gen_server:call(Pid, {messages, TS}),
+    {ok, LastTS, Messages}.
 
 -spec publish(Tag :: term(), Msg :: term(), TS :: non_neg_integer(),
     Mode :: local | global) -> TS :: non_neg_integer().
@@ -90,8 +105,13 @@ handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages,
     [Pid ! {dps_msg, Msg} || Msg <- Msgs],
     NewState = State#state{subscribers = [Pid | Subscribers]},
     {reply, length(Msgs), NewState};
+
+handle_call({messages, TS}, _From, State = #state{last_ts = LastTS, messages = AllMessages}) ->
+    Messages = [Msg || {_,Msg} <- AllMessages],
+    {reply, {ok, LastTS, Messages}, State};
+
 handle_call(_Msg, _From, State) ->
-    {noreply, State}.
+    {reply, {error, {unknown_call, _Msg}}, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
