@@ -160,6 +160,16 @@ test_multi_fetch() ->
   ok.
 
 
+test_proper_last_test_on_empty_multi_fetch() ->
+  dps_channels_manager:create(test_channel1),
+  dps_channels_manager:create(test_channel2),
+  dps_channels_manager:create(test_channel3),
+
+  Reply = dps_channel:multi_fetch([test_channel1, test_channel2, test_channel3], 12345, 5),
+  ?assertEqual({ok, 12345, []}, Reply),
+  ok.
+
+
 
 
 

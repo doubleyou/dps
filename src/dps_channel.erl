@@ -110,7 +110,7 @@ multi_fetch(Tags, TS, Timeout) ->
     after
         Timeout ->
             [unsubscribe(Tag) || Tag <- Tags],
-            receive_multi_fetch_results(0, [])
+            receive_multi_fetch_results(TS, [])
     end.
 
 receive_multi_fetch_results(LastTS, Messages) ->
