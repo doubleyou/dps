@@ -24,7 +24,6 @@ manager_test_() ->
 setup() ->
   % Modules = [dps_channels_manager, dps_channels_sup],
   % meck:new(Modules, [{passthrough,true}]),
-  process_flag(trap_exit, true),
   Modules = [],
 
   net_kernel:start([dps_test, shortnames]),
@@ -84,8 +83,8 @@ test_channel_failing() ->
 
 
 test_publish_on_channel() ->
-  ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:create(test_channel)),
-  ?assertMatch({ok, TS}, dps_channel:publish(test_channel, message)),
+  ?assertMatch(Pid when is_pid(Pid), dps_channels_manager:create(test_channel)),
+  ?assertMatch(TS when is_number(TS), dps_channel:publish(test_channel, message)),
   ok.
 
 
