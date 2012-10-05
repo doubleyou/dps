@@ -4,7 +4,10 @@
          new/0,
          new/1,
          publish/2,
-         subscribe/1]).
+         subscribe/1,
+         multi_fetch/2,
+         multi_fetch/3
+         ]).
 
 -spec start() -> ok.
 start() ->
@@ -14,7 +17,7 @@ start() ->
 
 -spec new() -> Tag :: string().
 new() ->
-    Tag = os:cmd("uuidgen") -- "\n",
+    Tag = dps_uuid:gen(),
     new(Tag),
     Tag.
 
@@ -30,3 +33,14 @@ publish(Tag, Msg) ->
 -spec subscribe(Tag :: term()) -> TotalMsgs :: non_neg_integer().
 subscribe(Tag) ->
     dps_channel:subscribe(Tag).
+
+
+-spec multi_fetch([Tag :: term()], TS :: non_neg_integer()) -> 
+    {ok, LastTS :: non_neg_integer(), [Msg :: term()]}.
+multi_fetch(Tags, TS) ->
+    dps_channel:multi_fetch(Tags, TS).
+
+-spec multi_fetch([Tag :: term()], TS :: non_neg_integer(), Timeout :: non_neg_integer()) -> 
+    {ok, LastTS :: non_neg_integer(), [Msg :: term()]}.
+multi_fetch(Tags, TS, Timeout) ->
+    dps_channel:multi_fetch(Tags, TS, Timeout).

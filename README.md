@@ -9,8 +9,8 @@ Usage:
 # Channel creation
 
 
-    dps:create(<<"channel1">>),
-    dps:create(<<"channel2">>).
+    dps:new(<<"channel1">>),
+    dps:new(<<"channel2">>).
 
 
 # Publishing
