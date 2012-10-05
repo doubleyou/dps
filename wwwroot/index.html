@@ -31,13 +31,13 @@ window.servers = [
 ];
 
 
-function connect(num) {
+function connect(last_ts) {
   var number = Math.floor(Math.random()*servers.length);
   $("#server_list .connecting").removeClass("connecting");
   $("#server_list .connected").removeClass("connected");
   $("#server"+number).addClass("connecting");
 
-  poll(number, 0);
+  poll(number, last_ts);
   // if(window.WebSocket) {
   //   var ws = new WebSocket("ws://"+servers[0] + "/poll");
   //   ws.onerror = function() {
@@ -52,12 +52,13 @@ function poll(number, last_ts) {
     data: {ts : last_ts},
     dataType : "json",
     error: function(xhr, code) {
+      console.log("error on "+servers[number] + ": "+code)
       // if(code == "timeout") {
       //   setTimeout(function() {
       //     poll(number, reply.ts);
       //   }, 100);
       // }
-      setTimeout(connect, 500);
+      setTimeout(function() {connect(last_ts); }, 500);
     },
     timeout: 50000,
     cache: false,
@@ -79,7 +80,7 @@ $(function() {
     $("#server_list").append("<li><span id='server"+i+"'>"+servers[i] + "</span></li>");
   }
 
-  connect();
+  connect(0);
 });
 </script>  
 </body>

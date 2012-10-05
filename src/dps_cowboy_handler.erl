@@ -26,7 +26,7 @@ handle(Req, poll) ->
   end,
   {ok, LastTS1, Messages} = dps:multi_fetch([example_channel1, example_channel2], LastTS, 10000),
   JSON = [io_lib:format("{\"ts\":~B, \"messages\" : [", [LastTS1]), "]}"],
-  {ok, Req3} = cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>}], JSON, Req2),
+  {ok, Req3} = cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>},{<<"Access-Control-Allow-Origin">>, <<"*">>}], JSON, Req2),
   {ok, Req3, poll}.
 
 terminate(_Req, _State) ->
