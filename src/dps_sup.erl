@@ -20,4 +20,4 @@ start_link() ->
 init([]) ->
     ChannelsMgr = ?CHILD(dps_channels_manager, worker),
     ChannelsSup = ?CHILD(dps_channels_sup, supervisor),
-    {ok, { {one_for_one, 5, 10}, [ChannelsMgr, ChannelsSup]} }.
+    {ok, { {one_for_one, 5, 10}, [ChannelsSup, ChannelsMgr]} }.
