@@ -2,8 +2,79 @@
 <head>
 <title>Example page for DPS</title>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<script type="text/javascript" src="/jquery.js"></script>
+
+<style type="text/css">
+#server_list .connecting {
+  border-bottom: 1px dashed #999;
+  color: #999;
+}
+
+#server_list .connected {
+  #color: green;
+}
+</style>
 </head>
 <body>
   <h1>DPS</h1>
+
+  <h3>Available servers:</h3>
+  <ul id="server_list">
+  </ul>
+
+<script type="text/javascript">
+window.servers = [
+  "localhost:9201",
+  "localhost:9202",
+  "localhost:9203",
+  "localhost:9204"
+];
+
+
+function connect(num) {
+  var number = Math.floor(Math.random()*servers.length);
+  $("#server_list .connecting").removeClass("connecting");
+  $("#server_list .connected").removeClass("connected");
+  $("#server"+number).addClass("connecting");
+
+  poll(number, 0);
+  // if(window.WebSocket) {
+  //   var ws = new WebSocket("ws://"+server[number] + "/auth");
+  //   var ws.onerror = function() {
+
+  //   }
+  // }
+}
+
+function poll(number, last_ts) {
+  $.ajax({
+    url : "http://"+servers[number] + "/auth",
+    data: {ts : last_ts},
+    dataType : "json",
+    error: function() {
+      setTimeout(connect, 1000);
+    },
+    cache: false,
+    success: function(reply) {
+      $("#server_list .connecting").removeClass("connecting").addClass("connected");
+
+      setTimeout(function() {
+        poll(number, reply.ts);
+      }, 100);
+    }
+  });
+
+}
+
+
+$(function() {
+  var i;
+  for(i = 0; i < servers.length; i++) {
+    $("#server_list").append("<li><span id='server"+i+"'>"+servers[i] + "</span></li>");
+  }
+
+  connect();
+});
+</script>  
 </body>
 </html>
