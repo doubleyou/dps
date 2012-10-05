@@ -1,6 +1,8 @@
 -module(dps_channels_manager).
 -behaviour(gen_server).
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -include_lib("stdlib/include/ms_transform.hrl").
 

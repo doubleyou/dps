@@ -1,15 +1,17 @@
 -module(dps_channels_manager_tests).
--include_lib("eunit/include/eunit.hrl").
 -compile(export_all).
 
 -ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
 
 manager_test_() ->
   {foreach,
   fun setup/0,
   fun teardown/1,
   [
-    fun test_create/0
+    fun test_create/0,
+    fun test_channel_failing/0
   ]}.
 
 
@@ -20,7 +22,7 @@ setup() ->
   unlink(Manager),
   meck:expect(dps_channels_sup, start_channel, fun(Tag) ->
     {ok,Pid} = dps_channel:start_link(Tag),
-    % unlink(Pid),
+    unlink(Pid),
     {ok, Pid}
   end),
   {Modules, Manager}.
@@ -46,7 +48,9 @@ test_channel_failing() ->
   ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:create(test_channel)),
   ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:find(test_channel)),
   {ok, Pid} = dps_channels_manager:find(test_channel),
+  ?assertNotEqual(Pid, whereis(dps_channels_manager)),
   erlang:exit(Pid, kill),
+  timer:sleep(50),
   gen_server:call(dps_channels_manager, sync_call), % Just for synchronisation
   ?assertEqual(undefined, dps_channels_manager:find(test_channel)),
   ok.

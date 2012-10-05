@@ -1,9 +1,9 @@
 -module(dps_channel_tests).
 
 -compile(export_all).
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 
--ifdef(TEST).
 
 dps_channel_test_() ->
   {foreach,

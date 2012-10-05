@@ -2,7 +2,9 @@
 -behaviour(gen_server).
 
 -include_lib("stdlib/include/ms_transform.hrl").
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -export([start_link/1]).
 -export([init/1,
