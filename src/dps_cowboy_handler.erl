@@ -22,6 +22,10 @@ init({tcp,http},Req,[push]) ->
   {ok, Req, push}.
 
 
+json_headers() ->
+  [{<<"Content-Type">>, <<"application/json">>},{<<"Access-Control-Allow-Origin">>, <<"*">>},
+  {<<"Access-Control-Allow-Methods">>, <<"POST, GET, OPTIONS">>},
+  {<<"Access-Control-Allow-Headers">>, <<"Content-Type">>}].
 
 handle(Req, poll) ->
   {TS, Req2} = cowboy_req:qs_val(<<"ts">>, Req),
@@ -30,9 +34,9 @@ handle(Req, poll) ->
     _ -> list_to_integer(binary_to_list(TS))
   end,
   {ok, LastTS1, Messages} = dps:multi_fetch([example_channel1, example_channel2], LastTS, 10000),
-  MsgList = lists:foldr(fun(M, []) -> [M]; (M, L) -> [M, ","|L] end, [], Messages),
+  MsgList = lists:foldr(fun(M, []) -> [M]; (M, L) -> [M, ","|L] end, [], [M || M <- Messages, size(M) > 0]),
   JSON = [io_lib:format("{\"ts\":~B,", [LastTS1]), "\"messages\" : [", MsgList, "]}"],
-  {ok, Req3} = cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>},{<<"Access-Control-Allow-Origin">>, <<"*">>}], JSON, Req2),
+  {ok, Req3} = cowboy_req:reply(200, json_headers(), JSON, Req2),
   {ok, Req3, poll};
 
 
@@ -40,7 +44,7 @@ handle(Req, push) ->
   {ok, Message, Req1} = cowboy_req:body(Req),
   TS = dps:publish(example_channel1, Message),
   JSON = io_lib:format("{\"ts\" : ~B}", [TS]),
-  {ok, Req2} = cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>},{<<"Access-Control-Allow-Origin">>, <<"*">>}], JSON, Req1),
+  {ok, Req2} = cowboy_req:reply(200, json_headers(), JSON, Req1),
   {ok, Req2, push}.
 
 terminate(_Req, _State) ->
