@@ -18,7 +18,7 @@
          messages/2,
 
 
-
+         messages_limit/0,
          publish/4,
          subscribe/1,
          subscribe/2,
@@ -30,12 +30,17 @@
     subscribers = []    :: list(),
     messages = []       :: list(),
     last_ts,
+    limit,
     tag                 :: term()
 }).
 
 %%
 %% External API
 %%
+
+messages_limit() ->
+    100.
+
 
 -spec publish(Tag :: term(), Msg :: term()) -> TS :: non_neg_integer().
 publish(Tag, Msg) ->
@@ -91,12 +96,16 @@ start_link(Tag) ->
 -spec init(Tag :: term()) -> {ok, #state{}}.
 init(Tag) ->
     self() ! replicate_from_peers,
-    {ok, #state{tag = Tag}}.
+    {ok, #state{tag = Tag, limit = messages_limit()}}.
 
-handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs,
+handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit = Limit,
                                                 subscribers = Subscribers}) ->
     [Sub ! {dps_msg, Msg} || Sub <- Subscribers, Sub =/= Pid],
-    Messages = lists:sort([{TS, Msg} | Msgs]),
+    Messages1 = lists:sort([{TS, Msg} | Msgs]),
+    Messages = if
+        length(Messages1) =< Limit -> Messages1;
+        length(Messages1) == Limit + 1 -> tl(Messages1)
+    end,
     LastTS = lists:max([T || {T, _} <- Messages]),
     NewState = State#state{messages = Messages, last_ts = LastTS},
     {reply, ok, NewState};

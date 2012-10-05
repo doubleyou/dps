@@ -66,6 +66,30 @@ test_channel_refetch_new_messages() ->
   ?assertEqual({ok, 4, [message3, message4]}, dps_channel:messages(test_channel, 2)),
   ok.
 
+test_channel_messages_limit() ->
+  dps_channels_manager:create(test_channel),
+  TotalLimit = dps_channel:messages_limit(),
+
+  [dps_channel:publish(test_channel, {messages, I}) || I <- lists:seq(1, TotalLimit)],
+  ?assertMatch({ok, _, Msg} when length(Msg) == TotalLimit, dps_channel:messages(test_channel, undefined)),
+
+  dps_channel:publish(test_channel, {messages, TotalLimit + 1}),
+  {ok, _, Messages} = dps_channel:messages(test_channel, undefined),
+  ?assertEqual(TotalLimit, length(Messages)),
+
+  Numbers = [I || {messages, I} <- Messages],
+  ?assertEqual(2, lists:min(Numbers)),
+  ?assertEqual(TotalLimit + 1, lists:max(Numbers)),
+  ok.
+
+
+
+
+
+
+
+
+
 
 
 -endif.
