@@ -16,7 +16,12 @@ init({tcp, http}, Req, [poll]) ->
       {upgrade, protocol, cowboy_websocket};
     undefined ->
       {ok, Req1, poll}
-  end.
+  end;
+
+init({tcp,http},Req,[push]) ->
+  {ok, Req, push}.
+
+
 
 handle(Req, poll) ->
   {TS, Req2} = cowboy_req:qs_val(<<"ts">>, Req),
@@ -25,9 +30,18 @@ handle(Req, poll) ->
     _ -> list_to_integer(binary_to_list(TS))
   end,
   {ok, LastTS1, Messages} = dps:multi_fetch([example_channel1, example_channel2], LastTS, 10000),
-  JSON = [io_lib:format("{\"ts\":~B, \"messages\" : [", [LastTS1]), "]}"],
+  MsgList = lists:foldr(fun(M, []) -> [M]; (M, L) -> [M, ","|L] end, [], Messages),
+  JSON = [io_lib:format("{\"ts\":~B,", [LastTS1]), "\"messages\" : [", MsgList, "]}"],
   {ok, Req3} = cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>},{<<"Access-Control-Allow-Origin">>, <<"*">>}], JSON, Req2),
-  {ok, Req3, poll}.
+  {ok, Req3, poll};
+
+
+handle(Req, push) ->
+  {ok, Message, Req1} = cowboy_req:body(Req),
+  TS = dps:publish(example_channel1, Message),
+  JSON = io_lib:format("{\"ts\" : ~B}", [TS]),
+  {ok, Req2} = cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>},{<<"Access-Control-Allow-Origin">>, <<"*">>}], JSON, Req1),
+  {ok, Req2, push}.
 
 terminate(_Req, _State) ->
   ok.
