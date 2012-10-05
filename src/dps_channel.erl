@@ -183,13 +183,13 @@ handle_info(replicate_from_peers, State = #state{tag = Tag}) ->
     {noreply, State};
 
 
-handle_info({give_me_messages, Pid}, State = #state{messages = Messages}) ->
-    Pid ! {messages, Messages},
+handle_info({give_me_messages, Pid}, State = #state{last_ts = LastTS, messages = Messages}) ->
+    Pid ! {replication_messages, LastTS, Messages},
     {noreply, State};
-handle_info({messages, Msgs}, State = #state{messages = Messages,
+handle_info({replication_messages, LastTS, Msgs}, State = #state{messages = Messages,
                                                 subscribers = Subscribers}) ->
     [[Sub ! {dps_msg, Msg} || Msg <- Msgs] || {Sub, _Ref} <- Subscribers],
-    NewState = State#state{ messages = lists:usort(Messages ++ Msgs) },
+    NewState = State#state{last_ts = LastTS, messages = lists:usort(Messages ++ Msgs) },
     {noreply, NewState};
 handle_info({'DOWN', Ref, _, Pid, _}, State = #state{subscribers=Subscribers}) ->
     {noreply, State#state{subscribers = Subscribers -- [{Pid,Ref}]}};
