@@ -69,7 +69,7 @@ publish(Tag, Msg, TS, Mode) ->
 
 -spec subscribe(Tag :: term()) -> Msgs :: non_neg_integer().
 subscribe(Tag) ->
-    subscribe(Tag, 0).
+    subscribe(Tag, undefined).
 
 -spec subscribe(Tag :: term(), TS :: non_neg_integer()) ->
                                                     Msgs :: non_neg_integer().
@@ -110,11 +110,14 @@ handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit 
     NewState = State#state{messages = Messages, last_ts = LastTS},
     {reply, ok, NewState};
 
-handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages,
-                                                subscribers = Subscribers}) ->
+handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag = Tag,
+                                                subscribers = Subscribers, last_ts = LastTS}) ->
     erlang:monitor(process, Pid),
-    Msgs = later_than(TS, Messages),
-    [Pid ! {dps_msg, Msg} || Msg <- Msgs],
+    Msgs = [Msg || {T,Msg} <- Messages, TS == undefined orelse T > TS],
+    if
+        length(Msgs) > 0 -> Pid ! {dps_msg, Tag, LastTS, Msgs};
+        true -> ok
+    end,
     NewState = State#state{subscribers = [Pid | Subscribers]},
     {reply, length(Msgs), NewState};
 
@@ -156,15 +159,3 @@ code_change(_OldVsn, State, _Extra) ->
 terminate(_Reason, _State) ->
     ok.
 
-%%
-%% Internal functions
-%%
-
--spec later_than(TS :: non_neg_integer(), Messages :: list()) -> Msgs :: list().
-later_than(TS, Messages) ->
-    lists:takewhile(
-        fun({TS_, _}) ->
-            TS_ > TS
-        end,
-        Messages
-    ).

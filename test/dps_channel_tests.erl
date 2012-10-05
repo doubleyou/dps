@@ -114,4 +114,39 @@ test_channel_subscribe() ->
   ok.
 
 
+test_channel_subscribe_with_old_messages() ->
+  dps_channels_manager:create(test_channel),
+  TS1 = dps_channel:publish(test_channel, msg1),
+  _TS2 = dps_channel:publish(test_channel, msg2),
+  TS3 = dps_channel:publish(test_channel, msg3),
+
+  dps_channel:subscribe(test_channel, TS1),
+
+  Timeout = 100,
+  receive
+    {dps_msg, test_channel, LastTS, Messages} ->
+      ?assertEqual(TS3, LastTS),
+      ?assertEqual([msg2, msg3], Messages);
+    Else ->
+      ?debugFmt("else: ~p", [Else]),
+      error(strange_message)
+  after
+    Timeout -> error(parent_timeout)
+  end,
+  ok.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 -endif.
