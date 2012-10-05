@@ -32,7 +32,7 @@
 -record(state, {
     subscribers = []    :: list(),
     messages = []       :: list(),
-    last_ts,
+    last_ts = 0,
     limit,
     tag                 :: term()
 }).
@@ -45,23 +45,23 @@ messages_limit() ->
     100.
 
 
--spec publish(Tag :: term(), Msg :: term()) -> TS :: non_neg_integer().
+-spec publish(Tag :: dps:tag(), Msg :: dps:message()) -> TS :: dps:timestamp().
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
     publish(Tag, Msg, TS, global).
 
 
 
--spec messages(Tag :: term(), Timestamp :: non_neg_integer() | undefined) -> 
-    {ok, TS :: non_neg_integer() | undefined, [Message :: term()]}.
+-spec messages(Tag :: dps:tag(), Timestamp :: dps:timestamp()) -> 
+    {ok, TS :: dps:timestamp(), [Message :: term()]}.
 messages(Tag, TS) ->
     Pid = dps_channels_manager:find(Tag),
     Pid =/= undefined orelse erlang:error(no_channel),
     {ok, LastTS, Messages} = gen_server:call(Pid, {messages, TS}),
     {ok, LastTS, Messages}.
 
--spec publish(Tag :: term(), Msg :: term(), TS :: non_neg_integer(),
-    Mode :: local | global) -> TS :: non_neg_integer().
+-spec publish(Tag :: dps:tag(), Msg :: dps:message(), TS :: dps:timestamp(),
+    Mode :: local | global) -> TS :: dps:timestamp().
 publish(Tag, Msg, TS, Mode) ->
     Pid = dps_channels_manager:find(Tag),
     Pid =/= undefined orelse erlang:error(no_channel),
@@ -70,11 +70,11 @@ publish(Tag, Msg, TS, Mode) ->
         rpc:multicall(nodes(), ?MODULE, publish, [Tag, Msg, TS, local]),
     TS.
 
--spec subscribe(Tag :: term()) -> Msgs :: non_neg_integer().
+-spec subscribe(Tag :: dps:tag()) -> Msgs :: non_neg_integer().
 subscribe(Tag) ->
-    subscribe(Tag, undefined).
+    subscribe(Tag, 0).
 
--spec subscribe(Tag :: term(), TS :: non_neg_integer()) ->
+-spec subscribe(Tag :: dps:tag(), TS :: dps:timestamp()) ->
                                                     Msgs :: non_neg_integer().
 subscribe(Tag, TS) ->
     Pid = dps_channels_manager:find(Tag),
@@ -90,14 +90,14 @@ unsubscribe(Tag) ->
 
 
 
--spec multi_fetch([Tag :: term()], TS :: non_neg_integer() | undefined) ->
-    {ok, LastTS :: non_neg_integer() | undefined, [Message :: term()]}.
+-spec multi_fetch([Tag :: dps:tag()], TS :: dps:timestamp()) ->
+    {ok, LastTS :: dps:timestamp(), [Message :: term()]}.
 multi_fetch(Tags, TS) ->
     multi_fetch(Tags, TS, 60000).
 
 
--spec multi_fetch([Tag :: term()], TS :: non_neg_integer() | undefined, Timeout :: non_neg_integer()) ->
-    {ok, LastTS :: non_neg_integer() | undefined, [Message :: term()]}.
+-spec multi_fetch([Tag :: dps:tag()], TS :: dps:timestamp(), Timeout :: non_neg_integer()) ->
+    {ok, LastTS :: dps:timestamp(), [Message :: term()]}.
 
 multi_fetch(Tags, TS, Timeout) ->
     [subscribe(Tag, TS) || Tag <- Tags],
@@ -108,7 +108,7 @@ multi_fetch(Tags, TS, Timeout) ->
     after
         Timeout ->
             [unsubscribe(Tag) || Tag <- Tags],
-            receive_multi_fetch_results(undefined, [])
+            receive_multi_fetch_results(0, [])
     end.
 
 receive_multi_fetch_results(LastTS, Messages) ->
@@ -122,13 +122,13 @@ receive_multi_fetch_results(LastTS, Messages) ->
 
 
 
--spec msgs_from_peers(Tag :: term(), CallbackPid :: pid()) -> ok.
+-spec msgs_from_peers(Tag :: dps:tag(), CallbackPid :: pid()) -> ok.
 msgs_from_peers(Tag, CallbackPid) ->
     Pid = dps_channels_manager:find(Tag),
     Pid ! {give_me_messages, CallbackPid},
     ok.
 
--spec start_link(Tag :: term()) -> Result :: {ok, pid()} | {error, term()}.
+-spec start_link(Tag :: dps:tag()) -> Result :: {ok, pid()} | {error, term()}.
 start_link(Tag) ->
     gen_server:start_link(?MODULE, Tag, []).
 
@@ -136,7 +136,7 @@ start_link(Tag) ->
 %% gen_server callbacks
 %%
 
--spec init(Tag :: term()) -> {ok, #state{}}.
+-spec init(Tag :: dps:tag()) -> {ok, #state{}}.
 init(Tag) ->
     self() ! replicate_from_peers,
     {ok, #state{tag = Tag, limit = messages_limit()}}.

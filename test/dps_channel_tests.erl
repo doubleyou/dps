@@ -44,7 +44,7 @@ test_channel_get_all_messages() ->
   meck:expect(dps_util, ts, fun() -> 2 end),
   dps_channel:publish(test_channel, message2),
 
-  ?assertEqual({ok, 2, [message1, message2]}, dps_channel:messages(test_channel, undefined)),
+  ?assertEqual({ok, 2, [message1, message2]}, dps_channel:messages(test_channel, 0)),
   ok.
 
 
@@ -71,10 +71,10 @@ test_channel_messages_limit() ->
   TotalLimit = dps_channel:messages_limit(),
 
   [dps_channel:publish(test_channel, {messages, I}) || I <- lists:seq(1, TotalLimit)],
-  ?assertMatch({ok, _, Msg} when length(Msg) == TotalLimit, dps_channel:messages(test_channel, undefined)),
+  ?assertMatch({ok, _, Msg} when length(Msg) == TotalLimit, dps_channel:messages(test_channel, 0)),
 
   dps_channel:publish(test_channel, {messages, TotalLimit + 1}),
-  {ok, _, Messages} = dps_channel:messages(test_channel, undefined),
+  {ok, _, Messages} = dps_channel:messages(test_channel, 0),
   ?assertEqual(TotalLimit, length(Messages)),
 
   Numbers = [I || {messages, I} <- Messages],
@@ -144,7 +144,7 @@ test_multi_fetch() ->
 
   Self = self(),
   _Child = spawn_link(fun() ->
-    Reply = dps_channel:multi_fetch([test_channel1, test_channel2, test_channel3], undefined, 5000),
+    Reply = dps_channel:multi_fetch([test_channel1, test_channel2, test_channel3], 0, 5000),
     Self ! {child, Reply}
   end),
 
