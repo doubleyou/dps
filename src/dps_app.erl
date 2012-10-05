@@ -8,11 +8,11 @@
 %%
 
 start(_StartType, _StartArgs) ->
-    Result = dps_sup:start_link(),
+    {ok, Pid} = dps_sup:start_link(),
     % {TagsLists, _} = rpc:multicall(nodes(), dps_channel, all, []),
     % Tags = sets:to_list(sets:from_list(lists:flatten(TagsLists))),
     % [dps:new(Tag) || Tag <- Tags],
-    Result.
+    {ok, Pid}.
 
 stop(_State) ->
     ok.

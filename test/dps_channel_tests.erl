@@ -143,7 +143,7 @@ test_multi_fetch() ->
   dps_channels_manager:create(test_channel3),
 
   Self = self(),
-  Child = spawn_link(fun() ->
+  _Child = spawn_link(fun() ->
     Reply = dps_channel:multi_fetch([test_channel1, test_channel2, test_channel3], undefined, 5000),
     Self ! {child, Reply}
   end),

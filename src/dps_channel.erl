@@ -90,9 +90,14 @@ unsubscribe(Tag) ->
 
 
 
+-spec multi_fetch([Tag :: term()], TS :: non_neg_integer() | undefined) ->
+    {ok, LastTS :: non_neg_integer() | undefined, [Message :: term()]}.
 multi_fetch(Tags, TS) ->
     multi_fetch(Tags, TS, 60000).
 
+
+-spec multi_fetch([Tag :: term()], TS :: non_neg_integer() | undefined, Timeout :: non_neg_integer()) ->
+    {ok, LastTS :: non_neg_integer() | undefined, [Message :: term()]}.
 
 multi_fetch(Tags, TS, Timeout) ->
     [subscribe(Tag, TS) || Tag <- Tags],

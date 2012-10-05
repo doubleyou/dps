@@ -97,7 +97,8 @@ test_remote_channels_start() ->
   ?assertEqual(undefined, dps_channels_manager:find(test_channel)),
   assert_create(),
 
-  {RemoteChannels, BadNodes2} = rpc:multicall(nodes(), dps_channels_manager, find, [test_channel]),
+  {Replies2, BadNodes2} = rpc:multicall(nodes(), dps_channels_manager, find, [test_channel]),
+  RemoteChannels = [Pid || Pid <- Replies2, is_pid(Pid)],
   ?assertEqual([], BadNodes2),
   ?assertEqual(?NODE_COUNT, length(RemoteChannels)),
   ok.
@@ -107,7 +108,8 @@ test_remote_slaves_take_our_channels() ->
   assert_create(),
   ?assertMatch({_,[]}, rpc:multicall(nodes(), application, start, [dps])),
 
-  {RemoteChannels, BadNodes2} = rpc:multicall(nodes(), dps_channels_manager, find, [test_channel]),
+  {Replies, BadNodes2} = rpc:multicall(nodes(), dps_channels_manager, find, [test_channel]),
+  RemoteChannels = [Pid || Pid <- Replies, is_pid(Pid)],
   ?assertEqual([], BadNodes2),
   ?assertEqual(?NODE_COUNT, length(RemoteChannels)),
   ok.
@@ -130,7 +132,10 @@ test_remote_channels_take_our_history_on_start() ->
 assert_create() ->
   ?assertMatch(Pid when is_pid(Pid), dps_channels_manager:create(test_channel)).
 
-
+test_replication_publish_when_node_is_not_initialized() ->
+  assert_create(),
+  [?assertMatch(TS when is_number(TS), dps_channel:publish(test_channel, N)) || N <- lists:seq(1,100)],
+  ok.  
 
 
 -endif.
