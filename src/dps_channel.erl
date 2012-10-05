@@ -28,12 +28,11 @@
          msgs_from_peers/2]).
 
 
-
 -record(state, {
     subscribers = []    :: list(),
     messages = []       :: list(),
-    last_ts = 0,
-    limit,
+    last_ts = 0         :: non_neg_integer(),
+    limit               :: non_neg_integer(),
     tag                 :: term()
 }).
 
@@ -41,6 +40,7 @@
 %% External API
 %%
 
+-spec messages_limit() -> 100.
 messages_limit() ->
     100.
 
@@ -61,8 +61,6 @@ publish_local(Tag, Msg, TS) ->
     end.
 
 
-
-
 -spec messages(Tag :: dps:tag(), Timestamp :: dps:timestamp()) -> 
     {ok, TS :: dps:timestamp(), [Message :: term()]}.
 messages(Tag, TS) when is_number(TS) ->
@@ -80,16 +78,16 @@ subscribe(Tag, TS) ->
     gen_server:call(find(Tag), {subscribe, self(), TS}).
 
 
-
+-spec unsubscribe(Tag :: term()) -> ok.
 unsubscribe(Tag) ->
     gen_server:call(find(Tag), {unsubscribe, self()}).
 
 
+-spec find(Tag :: term()) -> Pid :: pid().
 find(Tag) ->
     Pid = dps_channels_manager:find(Tag),
     Pid =/= undefined orelse erlang:throw({no_channel,Tag}),
     Pid.
-
 
 
 -spec multi_fetch([Tag :: dps:tag()], TS :: dps:timestamp()) ->
@@ -98,9 +96,9 @@ multi_fetch(Tags, TS) ->
     multi_fetch(Tags, TS, 60000).
 
 
--spec multi_fetch([Tag :: dps:tag()], TS :: dps:timestamp(), Timeout :: non_neg_integer()) ->
-    {ok, LastTS :: dps:timestamp(), [Message :: term()]}.
-
+-spec multi_fetch([Tag :: dps:tag()], TS :: dps:timestamp(),
+        Timeout :: non_neg_integer()) ->
+            {ok, LastTS :: dps:timestamp(), [Message :: term()]}.
 multi_fetch(Tags, TS, Timeout) ->
     [subscribe(Tag, TS) || Tag <- Tags],
     receive
@@ -112,16 +110,6 @@ multi_fetch(Tags, TS, Timeout) ->
             [unsubscribe(Tag) || Tag <- Tags],
             receive_multi_fetch_results(0, [])
     end.
-
-receive_multi_fetch_results(LastTS, Messages) ->
-    receive
-        {dps_msg, _Tag, LastTS1, Messages1} ->
-            receive_multi_fetch_results(LastTS1, Messages ++ Messages1)
-    after
-        0 ->
-            {ok, LastTS, Messages}
-    end.
-
 
 
 -spec msgs_from_peers(Tag :: dps:tag(), CallbackPid :: pid()) -> ok.
@@ -209,3 +197,18 @@ code_change(_OldVsn, State, _Extra) ->
 terminate(_Reason, _State) ->
     ok.
 
+%%
+%% Internal functions
+%%
+
+-spec receive_multi_fetch_results(LastTS :: non_neg_integer(),
+        Messages :: list()) ->
+            {ok, LastTS :: non_neg_integer(), Messages :: list()}.
+receive_multi_fetch_results(LastTS, Messages) ->
+    receive
+        {dps_msg, _Tag, LastTS1, Messages1} ->
+            receive_multi_fetch_results(LastTS1, Messages ++ Messages1)
+    after
+        0 ->
+            {ok, LastTS, Messages}
+    end.
