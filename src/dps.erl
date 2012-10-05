@@ -15,7 +15,7 @@ new() ->
     new(os:cmd("uuidgen") -- "\n").
 
 new(Tag) ->
-    dps_channel:new(Tag).
+    dps_channels_manager:create(Tag).
 
 publish(Tag, Msg) ->
     dps_channel:publish(Tag, Msg).
