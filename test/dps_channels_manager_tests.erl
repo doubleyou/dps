@@ -11,9 +11,15 @@ manager_test_() ->
   fun teardown/1,
   [
     fun test_create/0,
-    fun test_channel_failing/0
+    fun test_channel_failing/0,
+    fun test_slaves_are_ready/0
   ]}.
 
+-record(env, {
+  manager,
+  modules,
+  slaves = []
+}).
 
 setup() ->
   Modules = [dps_channels_manager, dps_channels_sup],
@@ -25,9 +31,18 @@ setup() ->
     unlink(Pid),
     {ok, Pid}
   end),
-  {Modules, Manager}.
 
-teardown({Modules, Manager}) ->
+  net_kernel:start([dps_test, shortnames]),
+  erlang:set_cookie(node(), mytestcookie),
+  {ok,Host} = inet:gethostname(),
+  {ok,Slave1} = slave:start_link(Host, dps_test1, "-setcookie mytestcookie"),
+  {ok,Slave2} = slave:start_link(Host, dps_test2, "-setcookie mytestcookie"),
+  {ok,Slave3} = slave:start_link(Host, dps_test3, "-setcookie mytestcookie"),
+
+  #env{modules = Modules, manager = Manager, slaves = [Slave1, Slave2, Slave3]}.
+
+teardown(#env{modules = Modules, manager = Manager, slaves = Slaves}) ->
+  [slave:stop(Slave) || Slave <- Slaves],
   meck:unload(Modules),
   [begin
     unlink(Pid),
@@ -40,6 +55,11 @@ teardown({Modules, Manager}) ->
 test_create() ->
   ?assertEqual(undefined, dps_channels_manager:find(test_channel)),
   ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:create(test_channel)),
+  ok.
+
+
+test_slaves_are_ready() ->
+  ?assertMatch(Nodes when length(Nodes) == 3, nodes()),
   ok.
 
 
