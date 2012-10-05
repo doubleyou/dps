@@ -45,6 +45,8 @@ teardown(#env{modules = Modules, slaves = Slaves}) ->
   [slave:stop(Slave) || Slave <- Slaves],
   meck:unload(Modules),
   application:stop(dps),
+  ?assertEqual([], nodes()),
+  ?assertEqual(undefined, whereis(dps_sup)),
   ok.
 
 

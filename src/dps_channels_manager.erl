@@ -106,7 +106,7 @@ inner_create(Tag) ->
     % we need to avoid race condition
     Reply = case find(Tag) of
         undefined ->
-            {ok, Pid} = dps_channels_sup:start_channel(Tag),
+            {ok, Pid} = dps_sup:start_channel(Tag),
             ets:insert(dps_channels_manager:table(), {Tag, Pid}),
             erlang:monitor(process, Pid),
             Pid;
