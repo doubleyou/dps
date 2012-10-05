@@ -6,11 +6,12 @@
 
 
 manager_test_() ->
-  TestFunctions = [F || {F,0} <- ?MODULE:module_info(exports), lists:prefix("test_", atom_to_list(F))],
+  TestFunctions = [F || {F,0} <- ?MODULE:module_info(exports),
+                            lists:prefix("test_", atom_to_list(F))],
   {foreach,
-  fun setup/0,
-  fun teardown/1,
-  [fun ?MODULE:F/0 || F <- TestFunctions]
+    fun setup/0,
+    fun teardown/1,
+    [{atom_to_list(F), fun ?MODULE:F/0} || F <- TestFunctions]
   }.
 
 -record(env, {
@@ -23,6 +24,7 @@ manager_test_() ->
 setup() ->
   % Modules = [dps_channels_manager, dps_channels_sup],
   % meck:new(Modules, [{passthrough,true}]),
+  process_flag(trap_exit, true),
   Modules = [],
 
   net_kernel:start([dps_test, shortnames]),
@@ -54,19 +56,29 @@ test_create() ->
 
 
 test_slaves_are_ready() ->
-  ?assertMatch(Nodes when length(Nodes) == ?NODE_COUNT, nodes()),
+  ?assertEqual(length(nodes()), ?NODE_COUNT),
   ok.
 
 
 test_channel_failing() ->
   ?assertEqual(undefined, dps_channels_manager:find(test_channel)),
-  ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:create(test_channel)),
-  ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:find(test_channel)),
-  {ok, Pid} = dps_channels_manager:find(test_channel),
+
+  {ok, Pid} = dps_channels_manager:create(test_channel),
+  ?assertEqual(true, is_pid(Pid)),
+  ?assertEqual({ok, Pid}, dps_channels_manager:find(test_channel)),
   ?assertNotEqual(Pid, whereis(dps_channels_manager)),
+
+  erlang:monitor(process, Pid),
   erlang:exit(Pid, kill),
-  timer:sleep(50),
-  gen_server:call(dps_channels_manager, sync_call), % Just for synchronisation
+  receive
+    {'DOWN', _, _, Pid, _} -> ok
+  after 1000 ->
+    error(test_timeout)
+  end,
+
+  %% We need to make sure that 'DOWN' message reaches manager before our call
+  gen_server:call(dps_channels_manager, sync_call),
+
   ?assertEqual(undefined, dps_channels_manager:find(test_channel)),
   ok.
 
@@ -74,15 +86,16 @@ test_channel_failing() ->
 
 test_remote_channels_start() ->
   {Replies, BadNodes} = rpc:multicall(nodes(), application, start, [dps]),
-  ?assertMatch(PidList when length(PidList) == ?NODE_COUNT, Replies),
+  ?assertEqual(length(Replies), ?NODE_COUNT),
   ?assertEqual([], BadNodes),
+
   ?assertEqual(undefined, dps_channels_manager:find(test_channel)),
   ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:create(test_channel)),
 
   {RemoteChannels, BadNodes2} = rpc:multicall(nodes(), dps_channels_manager, find, [test_channel]),
   ?assertEqual([], BadNodes2),
   Pids = [Pid || {ok, Pid} <- RemoteChannels],
-  ?assertMatch(Pids_ when length(Pids_) == ?NODE_COUNT, Pids),
+  ?assertEqual(?NODE_COUNT, length(Pids)),
   ok.
 
 
@@ -93,7 +106,7 @@ test_remote_slaves_take_our_channels() ->
   {Replies, BadNodes2} = rpc:multicall(nodes(), dps_channels_manager, find, [test_channel]),
   RemoteChannels = [Pid || {ok,Pid} <- Replies],
   ?assertEqual([], BadNodes2),
-  ?assertMatch(_ when length(RemoteChannels) == ?NODE_COUNT, RemoteChannels),
+  ?assertEqual(?NODE_COUNT, length(Replies)),
   ok.
 
 
