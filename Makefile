@@ -11,16 +11,16 @@ test: all
 	./rebar eunit skip_deps=true
 
 1:
-	erl -pa ebin -s dps_example -sname node1
+	erl -pa ebin -pa deps/*/ebin -s dps_example -sname node1
 
 2:
-	erl -pa ebin -s dps_example -sname node2
+	erl -pa ebin -pa deps/*/ebin -s dps_example -sname node2
 
 3:
-	erl -pa ebin -s dps_example -sname node3
+	erl -pa ebin -pa deps/*/ebin -s dps_example -sname node3
 
 4:
-	erl -pa ebin -s dps_example -sname node4
+	erl -pa ebin -pa deps/*/ebin -s dps_example -sname node4
 
 
 PLT_NAME=.dps.plt
