@@ -16,7 +16,7 @@
 
 -export_type([message/0, timestamp/0, tag/0]).
 
--spec new() -> Tag :: tag().
+-spec new() -> Tag :: binary().
 new() ->
     Tag = dps_uuid:gen(),
     new(Tag),
