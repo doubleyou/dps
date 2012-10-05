@@ -34,11 +34,11 @@ start_link() ->
 
 create(Tag) ->
     case find(Tag) of
-        {ok, Pid} ->
-            {ok, Pid};
         undefined ->
             rpc:multicall(?MODULE, create_local, [Tag]),
-            find(Tag)
+            find(Tag);
+        Pid ->
+            Pid
     end.
 
 create_local(Tag) ->
@@ -52,7 +52,7 @@ all() ->
 
 find(Tag) ->
     case ets:lookup(table(), Tag) of
-        [{Tag, Pid}] -> {ok, Pid};
+        [{Tag, Pid}] -> Pid;
         [] -> undefined
     end.
 
@@ -109,9 +109,9 @@ inner_create(Tag) ->
             {ok, Pid} = dps_channels_sup:start_channel(Tag),
             ets:insert(dps_channels_manager:table(), {Tag, Pid}),
             erlang:monitor(process, Pid),
-            {ok, Pid};
-        {ok, Pid} ->
-            {ok, Pid}
+            Pid;
+        Pid ->
+            Pid
     end,
     Reply.
 
