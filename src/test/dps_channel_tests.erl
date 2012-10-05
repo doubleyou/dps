@@ -3,7 +3,7 @@
 -compile(export_all).
 -include_lib("eunit/include/eunit.hrl").
 
-
+-ifdef(TEST).
 
 dps_channel_test_() ->
   {foreach,
@@ -31,3 +31,6 @@ teardown_dps_channel({Modules, Pid}) ->
 
 simple_pub_sup() ->
   ok.
+
+
+-endif.

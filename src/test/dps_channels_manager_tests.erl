@@ -2,7 +2,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -compile(export_all).
 
-
+-ifdef(TEST).
 
 manager_test_() ->
   {foreach,
@@ -40,3 +40,16 @@ test_create() ->
   ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:create(test_channel)),
   ok.
 
+
+test_channel_failing() ->
+  ?assertEqual(undefined, dps_channels_manager:find(test_channel)),
+  ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:create(test_channel)),
+  ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:find(test_channel)),
+  {ok, Pid} = dps_channels_manager:find(test_channel),
+  erlang:exit(Pid, kill),
+  gen_server:call(dps_channels_manager, sync_call), % Just for synchronisation
+  ?assertEqual(undefined, dps_channels_manager:find(test_channel)),
+  ok.
+
+
+-endif.
