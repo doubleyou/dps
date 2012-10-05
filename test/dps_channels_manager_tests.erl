@@ -104,7 +104,7 @@ test_remote_channels_start() ->
   ok.
 
 
-test_remote_slaves_take_our_channels() ->
+test_remote_slaves_take_our_channels_on_start() ->
   assert_create(),
   ?assertMatch({_,[]}, rpc:multicall(nodes(), application, start, [dps])),
 
