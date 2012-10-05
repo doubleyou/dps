@@ -30,16 +30,15 @@ handle(Req, poll) ->
     _ -> list_to_integer(binary_to_list(TS))
   end,
   {ok, LastTS1, Messages} = dps:multi_fetch([example_channel1, example_channel2], LastTS, 10000),
-  MsgList = lists:foldr(fun(M, []) -> [M]; (M, L) -> [M, ","|L] end, [], Messages),
-  JSON = [io_lib:format("{\"ts\":~B,", [LastTS1]), "\"messages\" : [", MsgList, "]}"],
+  JSON = mochijson2:encode({struct, [{ts, LastTS1}, {messages, Messages}]}),
   {ok, Req3} = cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>},{<<"Access-Control-Allow-Origin">>, <<"*">>}], JSON, Req2),
   {ok, Req3, poll};
 
 
 handle(Req, push) ->
   {ok, Message, Req1} = cowboy_req:body(Req),
-  TS = dps:publish(example_channel1, Message),
-  JSON = io_lib:format("{\"ts\" : ~B}", [TS]),
+  TS = dps:publish(example_channel1, mochijson2:decode(Message)),
+  JSON = mochijson2:encode({struct, [{ts, TS}]}),
   {ok, Req2} = cowboy_req:reply(200, [{<<"Content-Type">>, <<"application/json">>},{<<"Access-Control-Allow-Origin">>, <<"*">>}], JSON, Req1),
   {ok, Req2, push}.
 
