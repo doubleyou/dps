@@ -16,12 +16,15 @@
 
 -export([publish/2,
          messages/2,
+         unsubscribe/1,
+         subscribe/1,
+         subscribe/2,
+         multi_fetch/2,
+         multi_fetch/3,
 
 
          messages_limit/0,
          publish/4,
-         subscribe/1,
-         subscribe/2,
          msgs_from_peers/2]).
 
 
@@ -79,6 +82,41 @@ subscribe(Tag, TS) ->
     gen_server:call(Pid, {subscribe, self(), TS}).
 
 
+
+unsubscribe(Tag) ->
+    Pid = dps_channels_manager:find(Tag),
+    Pid =/= undefined orelse erlang:error(no_channel),
+    gen_server:call(Pid, {unsubscribe, self()}).
+
+
+
+multi_fetch(Tags, TS) ->
+    multi_fetch(Tags, TS, 60000).
+
+
+multi_fetch(Tags, TS, Timeout) ->
+    [subscribe(Tag, TS) || Tag <- Tags],
+    receive
+        {dps_msg, _Tag, LastTS, Messages} ->
+            [unsubscribe(Tag) || Tag <- Tags],
+            receive_multi_fetch_results(LastTS, Messages)
+    after
+        Timeout ->
+            [unsubscribe(Tag) || Tag <- Tags],
+            receive_multi_fetch_results(undefined, [])
+    end.
+
+receive_multi_fetch_results(LastTS, Messages) ->
+    receive
+        {dps_msg, _Tag, LastTS1, Messages1} ->
+            receive_multi_fetch_results(LastTS1, Messages ++ Messages1)
+    after
+        0 ->
+            {ok, LastTS, Messages}
+    end.
+
+
+
 -spec msgs_from_peers(Tag :: term(), CallbackPid :: pid()) -> ok.
 msgs_from_peers(Tag, CallbackPid) ->
     Pid = dps_channels_manager:find(Tag),
@@ -106,20 +144,25 @@ handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit 
         length(Messages1) == Limit + 1 -> tl(Messages1)
     end,
     LastTS = lists:max([T || {T, _} <- Messages]),
-    [Sub ! {dps_msg, Tag, LastTS, [Msg]} || Sub <- Subscribers, Sub =/= Pid],
+    [Sub ! {dps_msg, Tag, LastTS, [Msg]} || {Sub, _Ref} <- Subscribers, Sub =/= Pid],
     NewState = State#state{messages = Messages, last_ts = LastTS},
     {reply, ok, NewState};
 
 handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag = Tag,
                                                 subscribers = Subscribers, last_ts = LastTS}) ->
-    erlang:monitor(process, Pid),
+    Ref = erlang:monitor(process, Pid),
     Msgs = [Msg || {T,Msg} <- Messages, TS == undefined orelse T > TS],
     if
         length(Msgs) > 0 -> Pid ! {dps_msg, Tag, LastTS, Msgs};
         true -> ok
     end,
-    NewState = State#state{subscribers = [Pid | Subscribers]},
+    NewState = State#state{subscribers = [{Pid,Ref} | Subscribers]},
     {reply, length(Msgs), NewState};
+
+handle_call({unsubscribe, Pid}, _From, State = #state{subscribers = Subscribers}) ->
+    {Delete, Remain} = lists:partition(fun({P,_Ref}) -> P == Pid end, Subscribers),
+    [erlang:demonitor(Ref) || {_Pid,Ref} <- Delete],
+    {reply, ok, State#state{subscribers = Remain}};
 
 handle_call({messages, TS}, _From, State = #state{last_ts = LastTS, messages = AllMessages}) ->
     Messages = if 
@@ -145,11 +188,11 @@ handle_info({give_me_messages, Pid}, State = #state{messages = Messages}) ->
     {noreply, State};
 handle_info({messages, Msgs}, State = #state{messages = Messages,
                                                 subscribers = Subscribers}) ->
-    [[Sub ! {dps_msg, Msg} || Msg <- Msgs] || Sub <- Subscribers],
+    [[Sub ! {dps_msg, Msg} || Msg <- Msgs] || {Sub, _Ref} <- Subscribers],
     NewState = State#state{ messages = lists:usort(Messages ++ Msgs) },
     {noreply, NewState};
-handle_info({'DOWN', _, _, Pid, _}, State = #state{subscribers=Subscribers}) ->
-    {noreply, State#state{subscribers = Subscribers -- [Pid]}};
+handle_info({'DOWN', Ref, _, Pid, _}, State = #state{subscribers=Subscribers}) ->
+    {noreply, State#state{subscribers = Subscribers -- [{Pid,Ref}]}};
 handle_info(_Info, State) ->
     {noreply, State}.
 

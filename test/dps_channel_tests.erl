@@ -137,6 +137,29 @@ test_channel_subscribe_with_old_messages() ->
 
 
 
+test_multi_fetch() ->
+  dps_channels_manager:create(test_channel1),
+  dps_channels_manager:create(test_channel2),
+  dps_channels_manager:create(test_channel3),
+
+  Self = self(),
+  Child = spawn_link(fun() ->
+    Reply = dps_channel:multi_fetch([test_channel1, test_channel2, test_channel3], undefined, 5000),
+    Self ! {child, Reply}
+  end),
+
+  dps_channel:publish(test_channel1, message1),
+
+  receive
+    {child, Reply} ->
+      ?assertMatch({ok, _, Messages} when length(Messages) == 1, Reply)
+  after
+    1000 -> error(parent_timeout)
+  end,
+
+  ok.
+
+
 
 
 
