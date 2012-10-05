@@ -18,15 +18,12 @@ setup_dps_channel() ->
   Modules = [dps_channel_sup, dps_channel],
   meck:new(Modules, [{passthrough, true}]),
   {ok, Pid} = dps_channel:start_link(test_chan),
-  Table = ets:new(test_channels, [public, set]),
-  meck:expect(dps_channel, table, fun() -> Table end),
-  ets:insert(Table, {test_chan, Pid}),
-  {Modules, Pid, Table}.
+  unlink(Pid),
+  {Modules, Pid}.
 
 
-teardown_dps_channel({Modules, Pid, Table}) ->
+teardown_dps_channel({Modules, Pid}) ->
   meck:unload(Modules),
-  ets:delete(Table),
   erlang:exit(Pid, shutdown),
   ok.
 

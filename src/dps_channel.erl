@@ -12,22 +12,18 @@
          code_change/3,
          terminate/2]).
 
--export([all/0,
-         new/1,
-         new/2,
-         publish/2,
+-export([publish/2,
          publish/4,
          subscribe/1,
          subscribe/2,
-         lookup/1,
          msgs_from_peers/2]).
 
 
--export([table/0]).
 
 -record(state, {
     subscribers = [],
-    messages = []
+    messages = [],
+    tag
 }).
 
 %%
@@ -36,31 +32,14 @@
 
 % very convenient function to mock global table when testing
 
-table() -> dps_channels.
 
-all() ->
-    MS = ets:fun2ms(fun({Tag, _}) -> Tag end),
-    ets:select(table(), MS).
-
-new(Tag) ->
-    new(Tag, global).
-
-new(Tag, Mode) ->
-    Result = case lookup(Tag) of
-        undefined ->
-            dps_channels_sup:start_channel(Tag);
-        _ ->
-            {error, channel_already_exists}
-    end,
-    Mode =:= global andalso rpc:multicall(nodes(), ?MODULE, new, [Tag, local]),
-    Result.
 
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
     publish(Tag, Msg, TS, global).
 
 publish(Tag, Msg, TS, Mode) ->
-    Pid = lookup(Tag),
+    Pid = dps_channels_manager:find(Tag),
     gen_server:call(Pid, {publish, Msg, TS}),
     Mode =:= global andalso
         rpc:multicall(nodes(), ?MODULE, publish, [Tag, Msg, TS, local]),
@@ -70,17 +49,12 @@ subscribe(Tag) ->
     subscribe(Tag, 0).
 
 subscribe(Tag, TS) ->
-    Pid = lookup(Tag),
+    Pid = dps_channels_manager:find(Tag),
     gen_server:call(Pid, {subscribe, self(), TS}).
 
-lookup(Tag) ->
-    case ets:lookup(table(), Tag) of
-        [{Tag, Pid}] -> Pid;
-        [] -> undefined
-    end.
 
 msgs_from_peers(Tag, CallbackPid) ->
-    Pid = lookup(Tag),
+    Pid = dps_channels_manager:find(Tag),
     Pid ! {give_me_messages, CallbackPid}.
 
 start_link(Tag) ->
@@ -91,9 +65,8 @@ start_link(Tag) ->
 %%
 
 init(Tag) ->
-    dps_channels_manager:register_channel(Tag, self()),
-    rpc:multicall(nodes(), ?MODULE, msgs_from_peers, [Tag, self()]),
-    {ok, #state{}}.
+    self() ! replicate_from_peers,
+    {ok, #state{tag = Tag}}.
 
 handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs,
                                                 subscribers = Subscribers}) ->
@@ -112,6 +85,12 @@ handle_call(_Msg, _From, State) ->
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
+
+handle_info(replicate_from_peers, State = #state{tag = Tag}) ->
+    rpc:multicall(nodes(), ?MODULE, msgs_from_peers, [Tag, self()]),
+    {noreply, State};
+
 
 handle_info({give_me_messages, Pid}, State = #state{messages = Messages}) ->
     Pid ! {messages, Messages},
