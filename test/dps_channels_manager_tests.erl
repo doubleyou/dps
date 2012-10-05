@@ -6,15 +6,12 @@
 
 
 manager_test_() ->
+  TestFunctions = [F || {F,0} <- ?MODULE:module_info(exports), lists:prefix("test_", atom_to_list(F))],
   {foreach,
   fun setup/0,
   fun teardown/1,
-  [
-    fun test_create/0,
-    fun test_channel_failing/0,
-    fun test_slaves_are_ready/0,
-    fun test_remote_channels_start/0
-  ]}.
+  [fun ?MODULE:F/0 || F <- TestFunctions]
+  }.
 
 -record(env, {
   modules,
@@ -40,6 +37,7 @@ setup() ->
   application:start(dps),
   {ok, [AppDesc]} = file:consult("../ebin/dps.app"),
   rpc:multicall(application, load, [AppDesc]),
+  gen_event:delete_handler(error_logger, error_logger_tty_h, []),
   #env{modules = Modules, slaves = Slaves}.
 
 teardown(#env{modules = Modules, slaves = Slaves}) ->
@@ -88,6 +86,16 @@ test_remote_channels_start() ->
   ok.
 
 
+test_remote_slaves_take_our_channels() ->
+  ?assertMatch({ok, _Pid}, dps_channels_manager:create(test_channel)),
+  ?assertMatch({_,[]}, rpc:multicall(nodes(), application, start, [dps])),
+
+  {Replies, BadNodes2} = rpc:multicall(nodes(), dps_channels_manager, find, [test_channel]),
+  RemoteChannels = [Pid || {ok,Pid} <- Replies],
+  ?assertEqual([], BadNodes2),
+  ?assertMatch(_ when length(RemoteChannels) == ?NODE_COUNT, RemoteChannels),
+  ?debugFmt("Woot: ~p", [RemoteChannels]),
+  ok.
 
 
 
