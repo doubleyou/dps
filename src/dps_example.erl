@@ -16,6 +16,9 @@ start() ->
 
     {OurNode, Port} = lists:keyfind(OurNode, 1, Nodes),
 
+    dps:new(example_channel1),
+    dps:new(example_channel2),
+
     application:start(ranch),
     application:start(cowboy),
     application:start(mimetypes),

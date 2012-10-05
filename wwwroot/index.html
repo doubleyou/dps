@@ -11,7 +11,7 @@
 }
 
 #server_list .connected {
-  #color: green;
+  color: green;
 }
 </style>
 </head>
@@ -39,8 +39,8 @@ function connect(num) {
 
   poll(number, 0);
   // if(window.WebSocket) {
-  //   var ws = new WebSocket("ws://"+server[number] + "/auth");
-  //   var ws.onerror = function() {
+  //   var ws = new WebSocket("ws://"+servers[0] + "/poll");
+  //   ws.onerror = function() {
 
   //   }
   // }
@@ -48,12 +48,18 @@ function connect(num) {
 
 function poll(number, last_ts) {
   $.ajax({
-    url : "http://"+servers[number] + "/auth",
+    url : "http://"+servers[number] + "/poll",
     data: {ts : last_ts},
     dataType : "json",
-    error: function() {
-      setTimeout(connect, 1000);
+    error: function(xhr, code) {
+      // if(code == "timeout") {
+      //   setTimeout(function() {
+      //     poll(number, reply.ts);
+      //   }, 100);
+      // }
+      setTimeout(connect, 500);
     },
+    timeout: 50000,
     cache: false,
     success: function(reply) {
       $("#server_list .connecting").removeClass("connecting").addClass("connected");
