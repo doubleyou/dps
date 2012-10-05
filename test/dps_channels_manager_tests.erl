@@ -94,7 +94,6 @@ test_remote_slaves_take_our_channels() ->
   RemoteChannels = [Pid || {ok,Pid} <- Replies],
   ?assertEqual([], BadNodes2),
   ?assertMatch(_ when length(RemoteChannels) == ?NODE_COUNT, RemoteChannels),
-  ?debugFmt("Woot: ~p", [RemoteChannels]),
   ok.
 
 

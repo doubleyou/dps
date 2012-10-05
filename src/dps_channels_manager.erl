@@ -64,10 +64,44 @@ find(Tag) ->
 init(Args) ->
     % Recovery procedure
     ets:new(dps_channels_manager:table(), [public, named_table, set]),
-    [erlang:monitor(process,Pid) || {_,Pid } <- ets:tab2list(dps_channels_manager:table())],
+    self() ! load_from_siblings,    
     {ok, Args}.
 
+
+handle_info(load_from_siblings, State) ->
+    {Replies, _} = rpc:multicall(nodes(), dps_channels_manager, all, []),
+    AllTags = lists:usort(lists:flatten(Replies)),
+    [inner_create(Tag) || Tag <- AllTags],
+    {noreply, State};
+
+handle_info({'DOWN', _, _, Pid, _}, State) ->
+    MS = ets:fun2ms(fun({_, Pid_}) -> Pid_ =:= Pid end),
+    ets:select_delete(dps_channels_manager:table(), MS),
+    {noreply, State};
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+
+
 handle_call({create, Tag}, _From, State) ->
+    Reply = inner_create(Tag),
+    {reply, Reply, State};
+
+handle_call(_Msg, _From, State) ->
+    {reply, {error, {unknown_call, _Msg}}, State}.
+
+handle_cast(_Msg, State) ->
+    {noreply, State}.
+
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+inner_create(Tag) ->
     % secondary check inside singleton process is mandatory because
     % we need to avoid race condition
     Reply = case find(Tag) of
@@ -79,24 +113,5 @@ handle_call({create, Tag}, _From, State) ->
         {ok, Pid} ->
             {ok, Pid}
     end,
-    {reply, Reply, State};
+    Reply.
 
-handle_call(_Msg, _From, State) ->
-    {reply, {error, {unknown_call, _Msg}}, State}.
-
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-handle_info({'DOWN', _, _, Pid, _}, State) ->
-    MS = ets:fun2ms(fun({_, Pid_}) -> Pid_ =:= Pid end),
-    ets:select_delete(dps_channels_manager:table(), MS),
-    {noreply, State};
-
-handle_info(_Info, State) ->
-    {noreply, State}.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-terminate(_Reason, _State) ->
-    ok.
