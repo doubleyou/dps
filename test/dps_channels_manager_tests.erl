@@ -117,14 +117,14 @@ test_remote_slaves_take_our_channels() ->
 test_remote_channels_take_our_history_on_start() ->
   assert_create(),
   [dps_channel:publish(test_channel, N) || N <- lists:seq(1,100)],
-%%  ?assertMatch({ok, TS, Messages} when is_number(TS) andalso length(Messages) == 100, dps_channel:messages(test_channel)),
-%%  ?assertMatch({_,[]}, rpc:multicall(nodes(), application, start, [dps])),
-%%
-%%  {Replies, BadNodes2} = rpc:multicall(nodes(), dps_channel, messages, [undefined]),
-%%  ?assertEqual([], BadNodes2),
-%%  [Reply|_] = Replies,
-%%
-%%  ?assertMatch({ok, TS, Messages} when is_number(TS) andalso length(Messages) == 100, Reply),
+  ?assertMatch({ok, TS, Messages} when is_number(TS) andalso length(Messages) == 100, dps_channel:messages(test_channel, 0)),
+  ?assertMatch({_,[]}, rpc:multicall(nodes(), application, start, [dps])),
+
+  {Replies, BadNodes2} = rpc:multicall(nodes(), dps_channel, messages, [test_channel, 0]),
+  ?assertEqual([], BadNodes2),
+  [Reply|_] = Replies,
+
+  ?assertMatch({ok, TS, Messages} when is_number(TS) andalso length(Messages) == 100, Reply),
   ok.
 
 assert_create() ->
