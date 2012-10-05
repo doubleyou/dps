@@ -83,6 +83,12 @@ test_channel_failing() ->
   ok.
 
 
+test_publish_on_channel() ->
+  ?assertMatch({ok, Pid} when is_pid(Pid), dps_channels_manager:create(test_channel)),
+  ?assertMatch({ok, TS}, dps_channel:publish(test_channel, message)),
+  ok.
+
+
 
 test_remote_channels_start() ->
   {Replies, BadNodes} = rpc:multicall(nodes(), application, start, [dps]),
