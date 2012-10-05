@@ -1,7 +1,6 @@
 -module(dps).
 
--export([start/0,
-         new/0,
+-export([new/0,
          new/1,
          publish/2,
          subscribe/1,
@@ -16,12 +15,6 @@
 -type timestamp() :: non_neg_integer().
 
 -export_type([message/0, timestamp/0, tag/0]).
-
--spec start() -> ok.
-start() ->
-    {ok, Nodes} = file:consult("priv/nodes.cfg"),
-    [net_adm:ping(Node) || Node <- Nodes],
-    application:start(dps).
 
 -spec new() -> Tag :: tag().
 new() ->
