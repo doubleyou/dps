@@ -2,9 +2,9 @@
 -behaviour(gen_server).
 
 -include_lib("stdlib/include/ms_transform.hrl").
--ifdef(TEST).
+% -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--endif.
+% -endif.
 
 -export([start_link/1]).
 -export([init/1,
@@ -96,8 +96,11 @@ init(Tag) ->
 handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs,
                                                 subscribers = Subscribers}) ->
     [Sub ! {dps_msg, Msg} || Sub <- Subscribers, Sub =/= Pid],
-    NewState = State#state{messages = lists:sort([{TS, Msg} | Msgs])},
+    Messages = lists:sort([{TS, Msg} | Msgs]),
+    LastTS = lists:max([T || {T, _} <- Messages]),
+    NewState = State#state{messages = Messages, last_ts = LastTS},
     {reply, ok, NewState};
+
 handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages,
                                                 subscribers = Subscribers}) ->
     erlang:monitor(process, Pid),
@@ -107,7 +110,10 @@ handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages,
     {reply, length(Msgs), NewState};
 
 handle_call({messages, TS}, _From, State = #state{last_ts = LastTS, messages = AllMessages}) ->
-    Messages = [Msg || {_,Msg} <- AllMessages],
+    Messages = if 
+        is_number(TS) -> [Msg || {T,Msg} <- AllMessages, T > TS];
+        TS == undefined -> [Msg || {_,Msg} <- AllMessages]
+    end,
     {reply, {ok, LastTS, Messages}, State};
 
 handle_call(_Msg, _From, State) ->

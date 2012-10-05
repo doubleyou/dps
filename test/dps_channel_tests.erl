@@ -38,32 +38,32 @@ test_channel_publish() ->
 
 test_channel_get_all_messages() ->
   dps_channels_manager:create(test_channel),
-  meck:expect(dps_util, ts, fun() -> 123456 end),
+  meck:expect(dps_util, ts, fun() -> 1 end),
   dps_channel:publish(test_channel, message1),
 
-  meck:expect(dps_util, ts, fun() -> 123457 end),
+  meck:expect(dps_util, ts, fun() -> 2 end),
   dps_channel:publish(test_channel, message2),
 
-  ?assertEqual({ok, 123457, [message1, message2]}, dps_channel:messages(test_channel, undefined)),
+  ?assertEqual({ok, 2, [message1, message2]}, dps_channel:messages(test_channel, undefined)),
   ok.
 
 
 test_channel_refetch_new_messages() ->
   dps_channels_manager:create(test_channel),
-  meck:expect(dps_util, ts, fun() -> 123456 end),
+  meck:expect(dps_util, ts, fun() -> 1 end),
   dps_channel:publish(test_channel, message1),
 
-  meck:expect(dps_util, ts, fun() -> 123457 end),
+  meck:expect(dps_util, ts, fun() -> 2 end),
   dps_channel:publish(test_channel, message2),
 
-  meck:expect(dps_util, ts, fun() -> 123458 end),
+  meck:expect(dps_util, ts, fun() -> 3 end),
   dps_channel:publish(test_channel, message3),
 
-  meck:expect(dps_util, ts, fun() -> 123459 end),
+  meck:expect(dps_util, ts, fun() -> 4 end),
   dps_channel:publish(test_channel, message4),
 
 
-  ?assertEqual({ok, 123459, [message3, message4]}, dps_channel:messages(test_channel, 1234567)),
+  ?assertEqual({ok, 4, [message3, message4]}, dps_channel:messages(test_channel, 2)),
   ok.
 
 
