@@ -21,6 +21,8 @@
     all/0,
     table/0]).
 
+-export([channels/0]).
+
 %%
 %% External API
 %%
@@ -56,6 +58,10 @@ find(Tag) ->
         [] -> undefined
     end.
 
+% Synchronous call, duplicating all() choice.
+% It is used because manager will reply only after replication is over
+channels() ->
+    gen_server:call(?MODULE, channels).
 
 %%
 %% gen_server callbacks
@@ -83,6 +89,9 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 
+
+handle_call(channels, _From, State) ->
+    {reply, all(), State};
 
 handle_call({create, Tag}, _From, State) ->
     Reply = inner_create(Tag),
