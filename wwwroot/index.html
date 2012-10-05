@@ -22,6 +22,14 @@
   <ul id="server_list">
   </ul>
 
+<form action="/push" method="post" id="push">
+  <input type="text" name="body" id="body" />
+  <input type="submit" value="send" />
+
+  <span id="flash_error"></span>
+</form>
+
+
 <script type="text/javascript">
 window.servers = [
   "localhost:9201",
@@ -73,6 +81,48 @@ function poll(number, last_ts) {
 
 }
 
+function onsubmit() {
+  var body = $("#body").val();
+  var data = {body : body};
+  $("#push").find("input").attr("disabled", "disabled");
+  $("#flash_error").html("");
+  $.ajax({
+    url : this.action,
+    type : "POST",
+    data : data,
+    error: function(xhr, code) {
+      push(data, 20);
+    },
+    success: function() {
+      $("#push").find("input").attr("disabled", null);
+    }
+  });
+  return false;
+}
+
+function push(data, count) {
+  if(count == 0) {
+    $("#push").find("input").attr("disabled", null);
+    $("#flash_error").html("Couldn't send message");
+    return;
+  }
+  var number = Math.floor(Math.random()*servers.length);
+  $("#flash_error").html("Sending. Left retries: "+count);
+
+  $.ajax({
+    url : "http://"+servers[number]+"/push",
+    data : data,
+    type : "POST",
+    error: function() {
+      setTimeout(function() {
+        push(data, count - 1);
+      }, 400);
+    },
+    success: function() {
+      $("#push").find("input").attr("disabled", null);
+    }
+  });
+}
 
 $(function() {
   var i;
@@ -81,6 +131,7 @@ $(function() {
   }
 
   connect(0);
+  $("#push").submit(onsubmit);
 });
 </script>  
 </body>
