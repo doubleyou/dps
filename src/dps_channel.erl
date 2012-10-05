@@ -99,14 +99,14 @@ init(Tag) ->
     {ok, #state{tag = Tag, limit = messages_limit()}}.
 
 handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit = Limit,
-                                                subscribers = Subscribers}) ->
-    [Sub ! {dps_msg, Msg} || Sub <- Subscribers, Sub =/= Pid],
+                                                subscribers = Subscribers, tag = Tag}) ->
     Messages1 = lists:sort([{TS, Msg} | Msgs]),
     Messages = if
         length(Messages1) =< Limit -> Messages1;
         length(Messages1) == Limit + 1 -> tl(Messages1)
     end,
     LastTS = lists:max([T || {T, _} <- Messages]),
+    [Sub ! {dps_msg, Tag, LastTS, [Msg]} || Sub <- Subscribers, Sub =/= Pid],
     NewState = State#state{messages = Messages, last_ts = LastTS},
     {reply, ok, NewState};
 

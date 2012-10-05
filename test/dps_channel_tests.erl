@@ -83,13 +83,35 @@ test_channel_messages_limit() ->
   ok.
 
 
+test_channel_subscribe() ->
+  dps_channels_manager:create(test_channel),
+  Timeout = 100,
+  Self = self(),
+  Child = spawn_link(fun() ->
+    dps_channel:subscribe(test_channel),
+    receive start -> ok after 1000 -> error(start_timeout) end,
+    {dps_msg, test_channel, TS1, [Msg1]} = receive {dps_msg, _, _, _} = R1 -> R1 after Timeout -> error(child_timeout1) end,
+    {dps_msg, test_channel, TS2, [Msg2]} = receive {dps_msg, _, _, _} = R2 -> R2 after Timeout -> error(child_timeout2) end,
+    {dps_msg, test_channel, TS3, [Msg3]} = receive {dps_msg, _, _, _} = R3 -> R3 after Timeout -> error(child_timeout3) end,
+    Self ! {ok, [TS1, TS2, TS3], [Msg1,Msg2,Msg3]},
+    ok
+  end),
 
+  TS1 = dps_channel:publish(test_channel, msg1),
+  TS2 = dps_channel:publish(test_channel, msg2),
+  TS3 = dps_channel:publish(test_channel, msg3),
+  
+  Child ! start,
 
+  receive
+    {ok, Timestamps, Messages} -> 
+      ?assertEqual([msg1,msg2,msg3], Messages),
+      ?assertEqual([TS1,TS2,TS3], Timestamps)
+  after
+    Timeout -> error(parent_timeout)
+  end,
 
-
-
-
-
+  ok.
 
 
 -endif.
