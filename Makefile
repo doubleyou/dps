@@ -23,6 +23,10 @@ test: all
 	erl -pa ebin -pa deps/*/ebin -s dps_example -sname node4
 
 
+bench:
+	./rebar compile skip_deps=true
+	erl -pa ebin -smp enable -s dps_benchmark run1
+
 PLT_NAME=.dps.plt
 
 $(PLT_NAME):

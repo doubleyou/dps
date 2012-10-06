@@ -14,6 +14,9 @@ run1() ->
     run1_sender(channel, 1)
   end),
 
+  spawn(fun() ->
+    run1_receiver([channel], 0)
+  end),
   % Receivers = [spawn(fun() ->
   %   Chan = I div 4,
   %   Channels = [Chan, (Chan+1) rem ?COUNT, (Chan+2) rem ?COUNT, (Chan + 3) rem ?COUNT],
@@ -22,7 +25,12 @@ run1() ->
   ok.
 
 
-
+run1_receiver(Channels, TS) ->
+  {ok, LastTS, Messages} = dps:multi_fetch(Channels, TS),
+  if
+    length(Messages) > 10 -> io:format("Messages: ~p~n", [length(Messages)]);
+  true -> ok end,
+  run1_receiver(Channels, LastTS).
 
 run1_sender(Chan, Number) ->
   receive
