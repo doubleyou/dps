@@ -112,3 +112,77 @@ collect_receive_stats(Stats, Messages) ->
 % run1_receiver(Channels, Number, TS) ->
 %   {ok, LastTS, Messages} = dps:multi_fetch(Channels, TS),
 %   run1_receiver(Channels, Number + length(Messages), LastTS).
+
+
+-record(poll, {
+  url,
+  ts = 0,
+  retries = 0,
+  socket,
+  host,
+  port,
+  path
+}).
+
+poll(URL) when is_list(URL) ->
+  {ok, {http, [], Host, Port, Path, []}} = http_uri:parse(URL),
+  poll(#poll{url = URL, path = Path, host = Host, port = Port});
+
+poll(#poll{retries = 10}) ->
+  throw(too_many_retries);
+
+poll(#poll{socket = undefined, host = Host, port = Port} = Poll) ->
+  {ok, Socket} = gen_tcp:connect(Host, Port, [binary, {send_timeout, 60000}, {active,false}]),
+  poll(Poll#poll{socket = Socket});
+
+poll(#poll{socket = Socket, path = Path, host = Host, ts = TS} = Poll) ->
+  Request = [<<"GET ">>, Path, "?ts=", integer_to_list(TS), <<" HTTP/1.1\r\nConnection: keepalive\r\nHost: ">>, Host, <<"\r\n\r\n">>],
+  case gen_tcp:send(Socket, Request) of
+    ok -> receive_poll_response(Poll);
+    {error, _} -> io:format("Problem with request\n"), restart_poll(Poll)
+  end.
+
+
+restart_poll(#poll{socket = Socket, retries = Retries} = Poll) ->
+  gen_tcp:close(Socket),
+  timer:sleep(100),
+  poll(Poll#poll{socket = undefined, retries = Retries + 1}).
+
+receive_poll_response(#poll{socket = Socket} = Poll) ->
+  ok = inet:setopts(Socket, [{packet,http}, {active,false}]),
+  case gen_tcp:recv(Socket, 0, 10000) of
+    {ok, {http_response, _, 200, _}} ->
+      receive_poll_headers(Poll, undefined);
+    {ok, {http_response, _, _Code, _}} ->
+      io:format("Bad response code: ~p~n", [_Code]),
+      restart_poll(Poll);
+    {error, _Error} ->
+      io:format("Error response: ~p~n", [_Error]),
+      restart_poll(Poll)
+  end.
+
+receive_poll_headers(#poll{socket = Socket} = Poll, Len) ->
+  case gen_tcp:recv(Socket, 0, 5000) of
+    {ok, {http_header, _, 'Content-Length', _, Length}} ->
+      receive_poll_headers(Poll, list_to_integer(Length));
+    {ok, {http_header, _, _Key, _, _Value}} ->
+      receive_poll_headers(Poll, Len);
+    {ok, http_eoh} ->
+      is_integer(Len) orelse throw({response_without_length, Poll#poll.url}),
+      inet:setopts(Socket, [{packet,raw},{active,false}]),
+      {ok, Body} = gen_tcp:recv(Socket, Len, 10000),
+      {struct, Val} = mochijson2:decode(Body),
+      TS = proplists:get_value(<<"ts">>, Val),
+      {ok, Val, Poll#poll{retries = 0, ts = TS}};
+    {error, _} ->
+      restart_poll(Poll)
+  end.
+
+
+
+
+
+
+
+
+
