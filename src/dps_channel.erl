@@ -153,7 +153,16 @@ handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit 
     [{LastTS, _}|_] = Messages,
     [Sub ! {dps_msg, Tag, LastTS, [Msg]} || {Sub, _Ref} <- Subscribers, Sub =/= Pid],
     NewState = State#state{messages = Messages, last_ts = LastTS},
-    Replicator ! {message, LastTS, {TS, Msg}},
+    case erlang:process_info(Replicator, message_queue_len) of
+        {message_queue_len, QueueLen} when QueueLen > Limit ->
+            % gen_server:call(Replicator, {message, LastTS, {TS, Msg}});
+            % for now we just skip messages, if replicator is too slow
+            ok;
+        _ ->
+            Replicator ! {message, LastTS, {TS, Msg}};
+        undefined ->
+            ok
+    end,
     {reply, ok, NewState};
 
 handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag = Tag,

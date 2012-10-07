@@ -16,18 +16,16 @@ start_link(Tag) ->
 init([Tag]) ->
   {ok, #replicator{tag = Tag}}.
 
+handle_call({message, LastTS1, Msg}, _From, #replicator{} = State) ->
+  {reply, ok, handle_message({message, LastTS1, Msg}, State)};
+
 handle_call(Call, _From, #replicator{} = State) ->
   {reply, {error, {unknown_call, Call}}, State}.
 
 
-handle_info({message, LastTS1, Msg}, #replicator{tag = Tag} = State) ->
-  {LastTS, Messages} = collect_all(LastTS1, [Msg]),
-  {Channels, _} = rpc:multicall(nodes(), dps_channel, find, [Tag]),
-  [try dps_channel:replicate_messages(Pid, LastTS, Messages)
-  catch
-    exit:{nodedown,_} -> ok
-  end || Pid <- Channels, is_pid(Pid)],
-  {noreply, State};
+handle_info({message, LastTS1, Msg}, #replicator{} = State) ->
+  NewState = handle_message({message, LastTS1, Msg}, State),
+  {noreply, NewState};
 
 handle_info(_Info, #replicator{} = State) ->
 
@@ -43,3 +41,13 @@ collect_all(LastTS1, Messages) ->
   after
     50 -> {LastTS1, Messages}
   end.
+
+
+handle_message({message, LastTS1, Msg}, #replicator{tag = Tag} = State) ->
+  {LastTS, Messages} = collect_all(LastTS1, [Msg]),
+  {Channels, _} = rpc:multicall(nodes(), dps_channel, find, [Tag]),
+  [try dps_channel:replicate_messages(Pid, LastTS, Messages)
+  catch
+    exit:{nodedown,_} -> ok
+  end || Pid <- Channels, is_pid(Pid)],
+  State.
