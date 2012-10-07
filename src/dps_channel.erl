@@ -226,7 +226,14 @@ prepend_sorted({TS1,Msg1}, [{TS2,Msg2}|Messages]) when TS1 < TS2 ->
 
 
 messages_newer(Messages, TS) ->
-    lists:reverse([Msg || {T,Msg} <- Messages, TS == undefined orelse T > TS]).
+    messages_newer(Messages, TS, []).
+
+messages_newer([{TS1,Msg1}|Messages], TS, Acc) when TS1 > TS ->
+    messages_newer(Messages, TS, [Msg1|Acc]);
+
+messages_newer(_Messages, _TS, Acc) ->
+    Acc.
+
 
 
 

@@ -39,6 +39,15 @@ prepend_sorted_test_() ->
   ].
 
 
+messages_newer_test_() ->
+  [
+    ?_assertEqual([], dps_channel:messages_newer([{4,d},{3,c},{2,b},{1,a}],4)),
+    ?_assertEqual([d], dps_channel:messages_newer([{4,d},{3,c},{2,b},{1,a}],3)),
+    ?_assertEqual([c,d], dps_channel:messages_newer([{4,d},{3,c},{2,b},{1,a}],2)),
+    ?_assertEqual([b,c,d], dps_channel:messages_newer([{4,d},{3,c},{2,b},{1,a}],1)),
+    ?_assertEqual([a,b,c,d], dps_channel:messages_newer([{4,d},{3,c},{2,b},{1,a}],0))
+  ].
+
 test_channel_publish() ->
   dps_channels_manager:create(test_channel),
   meck:expect(dps_util, ts, fun() -> 123456 end),
@@ -90,7 +99,7 @@ test_channel_messages_limit() ->
     TS = dps_channel:publish(test_channel, {message, I}),
     ?assertMatch(_ when TS > PrevTS, {TS,PrevTS}),
     TS
-  end, LastTS1, lists:seq(TotalLimit+1, TotalLimit*4)),
+  end, LastTS1, lists:seq(TotalLimit+1, TotalLimit*3)),
 
   {ok, _, Messages} = dps_channel:messages(test_channel, 0),
   ?assertMatch(Len when Len < TotalLimit*2, length(Messages)),
