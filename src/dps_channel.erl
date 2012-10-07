@@ -29,6 +29,7 @@
 
          messages_limit/0,
          publish_local/3,
+         replicate_messages/3,
          msgs_from_peers/2]).
 
 
@@ -37,7 +38,8 @@
     messages = []       :: list(),
     last_ts = 0         :: non_neg_integer(),
     limit               :: non_neg_integer(),
-    tag                 :: term()
+    tag                 :: term(),
+    replicator          :: pid()
 }).
 
 %%
@@ -53,16 +55,20 @@ messages_limit() ->
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
     gen_server:call(find(Tag), {publish, Msg, TS}),
-    rpc:multicall(nodes(), ?MODULE, publish_local, [Tag, Msg, TS]),
+    % rpc:multicall(nodes(), ?MODULE, publish_local, [Tag, Msg, TS]),
     TS.
 
 
 -spec publish_local(Tag :: dps:tag(), Msg :: dps:message(), TS :: dps:timestamp()) -> ok.
-publish_local(Tag, Msg, TS) ->
-    try gen_server:call(find(Tag), {publish, Msg, TS})
-    catch
-        throw:{no_channel, Tag} -> no_channel
-    end.
+publish_local(_Tag, _Msg, _TS) ->
+    % try gen_server:call(find(Tag), {publish, Msg, TS})
+    % catch
+        % throw:{no_channel, Tag} -> no_channel
+    % end.
+    ok.
+
+replicate_messages(Pid, LastTS, Msgs) ->
+    gen_server:call(Pid, {replication_messages, LastTS, Msgs}).
 
 
 -spec messages(Tag :: dps:tag(), Timestamp :: dps:timestamp()) -> 
@@ -138,7 +144,7 @@ init(Tag) ->
     {ok, #state{tag = Tag, limit = messages_limit()}}.
 
 handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit = Limit,
-                                                subscribers = Subscribers, tag = Tag}) ->
+                            replicator = Replicator, subscribers = Subscribers, tag = Tag}) ->
     Messages1 = prepend_sorted({TS,Msg}, Msgs),
     Messages = if
         length(Messages1) >= Limit*2 -> lists:sublist(Messages1, Limit);
@@ -147,6 +153,7 @@ handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit 
     [{LastTS, _}|_] = Messages,
     [Sub ! {dps_msg, Tag, LastTS, [Msg]} || {Sub, _Ref} <- Subscribers, Sub =/= Pid],
     NewState = State#state{messages = Messages, last_ts = LastTS},
+    Replicator ! {message, LastTS, {TS, Msg}},
     {reply, ok, NewState};
 
 handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag = Tag,
@@ -169,6 +176,9 @@ handle_call({messages, TS}, _From, State = #state{last_ts = LastTS, messages = A
     Messages = messages_newer(AllMessages, TS),
     {reply, {ok, LastTS, Messages}, State};
 
+handle_call({replication_messages, LastTS1, Msgs}, _From, State = #state{}) ->
+    {reply, ok, replication_messages(LastTS1, Msgs, State)};
+
 handle_call(_Msg, _From, State) ->
     {reply, {error, {unknown_call, _Msg}}, State}.
 
@@ -177,24 +187,17 @@ handle_cast(_Msg, State) ->
 
 
 handle_info(replicate_from_peers, State = #state{tag = Tag}) ->
+    {ok, Replicator} = dps_sup:channel_replicator(Tag),
     rpc:multicall(nodes(), ?MODULE, msgs_from_peers, [Tag, self()]),
-    {noreply, State};
+    {noreply, State#state{replicator = Replicator}};
 
 
 handle_info({give_me_messages, Pid}, State = #state{last_ts = LastTS, messages = Messages}) ->
     Pid ! {replication_messages, LastTS, Messages},
     {noreply, State};
-handle_info({replication_messages, LastTS1, Msgs}, State = #state{messages = Messages, tag = Tag,
-                                                subscribers = Subscribers, last_ts = LastTS2}) ->
-    LastTS = lists:max([LastTS1, LastTS2]),
-    Messages1 = lists:foldl(fun(M, List) ->
-        prepend_sorted(M,List)
-    end, Messages, Msgs),
 
-    SendMessage = {dps_msg, Tag, LastTS, [M || {_TS, M} <- Msgs]},
-    [Sub ! SendMessage || {Sub, _Ref} <- Subscribers],
-    NewState = State#state{last_ts = LastTS, messages = Messages1 },
-    {noreply, NewState};
+handle_info({replication_messages, LastTS1, Msgs}, State = #state{}) ->
+    {noreply, replication_messages(LastTS1, Msgs, State)};
 
 handle_info({'DOWN', Ref, _, Pid, _}, State = #state{subscribers=Subscribers}) ->
     {noreply, State#state{subscribers = Subscribers -- [{Pid,Ref}]}};
@@ -210,6 +213,23 @@ terminate(_Reason, _State) ->
 %%
 %% Internal functions
 %%
+
+
+replication_messages(_, [], State) ->
+    State;
+
+replication_messages(LastTS1, Msgs, State = #state{messages = Messages, tag = Tag,
+                                                subscribers = Subscribers, last_ts = LastTS2}) ->
+    LastTS = lists:max([LastTS1, LastTS2]),
+    Messages1 = lists:foldl(fun(M, List) ->
+        prepend_sorted(M,List)
+    end, Messages, Msgs),
+
+    SendMessage = {dps_msg, Tag, LastTS, [M || {_TS, M} <- Msgs]},
+    [Sub ! SendMessage || {Sub, _Ref} <- Subscribers],
+    State#state{last_ts = LastTS, messages = Messages1 }.
+        
+
 
 -spec receive_multi_fetch_results(LastTS :: non_neg_integer(),
         Messages :: list()) ->

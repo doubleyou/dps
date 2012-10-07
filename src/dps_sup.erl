@@ -2,7 +2,7 @@
 -behaviour(supervisor).
 
 -export([start_link/0]).
--export([start_channel/1, stop_channel/1]).
+-export([start_channel/1, channel_replicator/1, stop_channel/1]).
 -export([init/1]).
 
 -define(CHILD(M, R), {M, {M, start_link, []}, permanent, 5000, R, [M]}).
@@ -24,6 +24,16 @@ start_channel(Name) ->
   {channel, Pid, _, _} = lists:keyfind(channel, 1, supervisor:which_children(Supervisor)),
   {ok, Pid}.
 
+channel_replicator(Name) ->
+  case lists:keyfind(Name, 1, supervisor:which_children(dps_channels_sup)) of
+    {Name, Sup, _, _} ->
+      {replicator, Repl, _, _} = lists:keyfind(replicator, 1, supervisor:which_children(Sup)),
+      {ok, Repl};
+    false ->
+      undefined
+  end.
+
+
 stop_channel(Name) ->
   supervisor:terminate_child(dps_channels_sup, Name),
   supervisor:delete_child(dps_channels_sup, Name).
@@ -35,8 +45,8 @@ stop_channel(Name) ->
 
 init({channel, Name}) ->
   {ok, {{one_for_all, 5, 10}, [
-    {channel, {dps_channel, start_link, [Name]}, permanent, 5000, worker, [dps_channel]},
-    {replicator, {dps_channel_replicator, start_link, [Name]}, permanent, 5000, worker, [dps_channel_replicator]}
+    {replicator, {dps_channel_replicator, start_link, [Name]}, permanent, 5000, worker, [dps_channel_replicator]},
+    {channel, {dps_channel, start_link, [Name]}, permanent, 5000, worker, [dps_channel]}
   ]}};
 
 init([channels]) ->
