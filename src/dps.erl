@@ -7,7 +7,8 @@
          subscribe/2,
          multi_fetch/2,
          multi_fetch/3,
-         start/0
+         start/0,
+         start/1
          ]).
 
 
@@ -20,6 +21,12 @@
 -spec start() -> ok.
 start() ->
     application:start(dps).
+
+-spec start([Master::atom()]) -> ok.
+start([Master]) ->
+    pong = net_adm:ping(Master),
+    application:start(dps).
+
 
 -spec new() -> Tag :: binary().
 new() ->

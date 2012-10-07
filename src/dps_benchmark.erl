@@ -6,13 +6,28 @@
 -define(NODE_COUNT, 3).
 
 run1() ->
-  pong = net_adm:ping(bench1@localhost),
-  pong = net_adm:ping(bench2@localhost),
+  application:start(dps),
+  rpc:call(bench1@localhost, erlang, halt, []),
+  rpc:call(bench2@localhost, erlang, halt, []),
+  os:cmd("erl -pa ebin -smp enable -sname bench1@localhost -setcookie cookie -detached"),
+  os:cmd("erl -pa ebin -smp enable -sname bench2@localhost -setcookie cookie -detached"),
+  ping(bench1@localhost),
+  ping(bench2@localhost),
   rpc:multicall(nodes(), dps, start, []),
   run1(3).
 
+ping(Node) -> ping(Node, 10).
+
+ping(Node, 0) -> io:format("Failed to ping node ~p~n", [Node]), {error, failed};
+ping(Node, Count) ->
+  case net_adm:ping(Node) of
+    pong -> ok;
+    _ -> timer:sleep(200), ping(Node, Count - 1)
+  end.
+
+
+
 run1(ChannelCount) ->
-  application:start(dps),
 
   SendCollector = spawn(fun() ->
     timer:send_interval(1000, dump),
