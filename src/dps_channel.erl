@@ -23,6 +23,9 @@
          multi_fetch/3,
 
 
+         prepend_sorted/2,
+         messages_newer/2,
+
          messages_limit/0,
          publish_local/3,
          msgs_from_peers/2]).
@@ -133,12 +136,12 @@ init(Tag) ->
 
 handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit = Limit,
                                                 subscribers = Subscribers, tag = Tag}) ->
-    Messages1 = lists:sort([{TS, Msg} | Msgs]),
+    Messages1 = prepend_sorted({TS,Msg}, Msgs),
     Messages = if
-        length(Messages1) =< Limit -> Messages1;
-        length(Messages1) == Limit + 1 -> tl(Messages1)
+        length(Messages1) >= Limit*2 -> lists:sublist(Messages1, Limit);
+        true -> Messages1
     end,
-    LastTS = lists:max([T || {T, _} <- Messages]),
+    [{LastTS, _}|_] = Messages,
     [Sub ! {dps_msg, Tag, LastTS, [Msg]} || {Sub, _Ref} <- Subscribers, Sub =/= Pid],
     NewState = State#state{messages = Messages, last_ts = LastTS},
     {reply, ok, NewState};
@@ -146,7 +149,7 @@ handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit 
 handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag = Tag,
                                                 subscribers = Subscribers, last_ts = LastTS}) ->
     Ref = erlang:monitor(process, Pid),
-    Msgs = [Msg || {T,Msg} <- Messages, TS == undefined orelse T > TS],
+    Msgs = messages_newer(Messages, TS),
     if
         length(Msgs) > 0 -> Pid ! {dps_msg, Tag, LastTS, Msgs};
         true -> ok
@@ -160,10 +163,7 @@ handle_call({unsubscribe, Pid}, _From, State = #state{subscribers = Subscribers}
     {reply, ok, State#state{subscribers = Remain}};
 
 handle_call({messages, TS}, _From, State = #state{last_ts = LastTS, messages = AllMessages}) ->
-    Messages = if 
-        is_number(TS) -> [Msg || {T,Msg} <- AllMessages, T > TS];
-        TS == undefined -> [Msg || {_,Msg} <- AllMessages]
-    end,
+    Messages = messages_newer(AllMessages, TS),
     {reply, {ok, LastTS, Messages}, State};
 
 handle_call(_Msg, _From, State) ->
@@ -212,3 +212,19 @@ receive_multi_fetch_results(LastTS, Messages) ->
         0 ->
             {ok, LastTS, Messages}
     end.
+
+
+prepend_sorted({TS,Msg}, Messages) ->
+    [{TS,Msg}|Messages].
+
+
+messages_newer(Messages, TS) ->
+    lists:reverse([Msg || {T,Msg} <- Messages, TS == undefined orelse T > TS]).
+
+
+
+
+
+
+
+

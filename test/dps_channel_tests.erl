@@ -73,13 +73,13 @@ test_channel_messages_limit() ->
   [dps_channel:publish(test_channel, {messages, I}) || I <- lists:seq(1, TotalLimit)],
   ?assertMatch({ok, _, Msg} when length(Msg) == TotalLimit, dps_channel:messages(test_channel, 0)),
 
-  dps_channel:publish(test_channel, {messages, TotalLimit + 1}),
+  [dps_channel:publish(test_channel, {messages, I}) || I <- lists:seq(TotalLimit+1, TotalLimit*3)],
   {ok, _, Messages} = dps_channel:messages(test_channel, 0),
-  ?assertEqual(TotalLimit, length(Messages)),
+  ?assertMatch(Len when Len < TotalLimit*2, length(Messages)),
 
   Numbers = [I || {messages, I} <- Messages],
-  ?assertEqual(2, lists:min(Numbers)),
-  ?assertEqual(TotalLimit + 1, lists:max(Numbers)),
+  % ?assertEqual(2, lists:min(Numbers)),
+  ?assertMatch(Num when Num > TotalLimit, lists:min(Numbers)),
   ok.
 
 
