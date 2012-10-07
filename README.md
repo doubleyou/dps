@@ -42,13 +42,54 @@ and some messages have arrived after it.
 
 
 
+Benchmarking
+============
+
+DPS is beleived to handle about 60 000 msg/sec on several channels with replicating on several servers.
+
+How to benchmark:
+
+    maxbp:dps max$ make bench
+    ./rebar compile skip_deps=true
+    ==> dps (compile)
+    erl -pa ebin -pa deps/*/ebin -smp enable -s dps_benchmark run1 -sname bench@localhost -setcookie cookie
+    Erlang R15B02 (erts-5.9.2) [source] [64-bit] [smp:4:4] [async-threads:0] [hipe] [kernel-poll:false] [dtrace]
+
+    Eshell V5.9.2  (abort with ^G)
+    (bench@localhost)1> Send: 0 msg/s
+    Send: 31236 msg/s
+    Send: 43068 msg/s
+    Send: 66458 msg/s
+    Send: 54695 msg/s
+    Send: 57312 msg/s
+    Send: 57570 msg/s
+    Send: 57843 msg/s
+    Send: 58531 msg/s
+
+
+
+You will be able to see how many messages are published inside DPS
+
+Now lets compare with Redis pub/sub w. ruby client:
+
+    maxbp:dps max$ ./bench_redis/redis.rb 
+    8710 msg/s
+    9043 msg/s
+    9063 msg/s
+    8971 msg/s
+    8972 msg/s
+    8885 msg/s
+    8852 msg/s
+
+
+It is not what we are waiting for from C server with replication and without storing messages!
+
+
 
 TODO:
 =====
 
-* Replace lists with a priority queue implementation
-* Add tests (ideally - integration tests)
 * Add more robust nodes discovering
-* Add docs and specs
+* Add docs
 * Add channels closing support
 * Compare to replicated redis pub/sub
