@@ -86,6 +86,17 @@ Now lets compare with Redis pub/sub w. ruby client:
 It is not what we are waiting for from C server with replication and without storing messages!
 
 
+Implementation details
+======================
+
+
+# Full replication is used. You should install 2-3 servers in cluster for each independent shard of channels
+# Replication is using 50 milliseconds delay to group messages
+# Channel history is a mandatory feature, because message can arrive between http requests
+# Channel history is strictly limited, because user should always receive some limited amount of data
+# Server will temporary disable replication if it is going too slowly
+
+
 
 TODO:
 =====
