@@ -32,7 +32,7 @@ run1(ChannelCount) ->
   SendCollector = spawn(fun() ->
     timer:send_interval(1000, dump),
     timer:send_interval(10000, flush),
-    put(now, erlang:now()),
+    put(now, os:timestamp()),
     send_collector(0)
   end),
   erlang:register(send_collector, SendCollector),
@@ -54,10 +54,10 @@ send_collector(Total) ->
   receive
     {messages, _Channel, Count} -> send_collector(Total + Count);
     flush ->
-      put(now, erlang:now()),
+      put(now, os:timestamp()),
       send_collector(0);
     dump ->
-      Delta = timer:now_diff(erlang:now(), get(now)) div 1000000,
+      Delta = timer:now_diff(os:timestamp(), get(now)) div 1000000,
       if Delta > 0 ->
         io:format("Send: ~B msg/s~n", [Total div Delta]);
       true -> ok end,
