@@ -23,7 +23,10 @@ handle_call(Call, _From, #replicator{} = State) ->
 handle_info({message, LastTS1, Msg}, #replicator{tag = Tag} = State) ->
   {LastTS, Messages} = collect_all(LastTS1, [Msg]),
   {Channels, _} = rpc:multicall(nodes(), dps_channel, find, [Tag]),
-  [dps_channel:replicate_messages(Pid, LastTS, Messages) || Pid <- Channels, is_pid(Pid)],
+  [try dps_channel:replicate_messages(Pid, LastTS, Messages)
+  catch
+    exit:{nodedown,_} -> ok
+  end || Pid <- Channels, is_pid(Pid)],
   {noreply, State};
 
 handle_info(_Info, #replicator{} = State) ->

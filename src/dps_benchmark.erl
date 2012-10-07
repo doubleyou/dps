@@ -13,7 +13,8 @@ run1() ->
   os:cmd("erl -pa ebin -smp enable -sname bench2@localhost -setcookie cookie -detached"),
   ping(bench1@localhost),
   ping(bench2@localhost),
-  rpc:multicall(nodes(), dps, start, []),
+  {_, BadNodes} = rpc:multicall(nodes(), dps, start, []),
+  BadNodes == [] orelse error({nodes_failed,BadNodes}),
   run1(3).
 
 ping(Node) -> ping(Node, 10).
@@ -33,10 +34,15 @@ run1(ChannelCount) ->
     timer:send_interval(1000, dump),
     timer:send_interval(10000, flush),
     put(now, erlang:now()),
-    send_collector(0)
+    receive
+      {senders, Senders} -> send_collector(0, Senders)
+    after
+      5000 -> error(failed_to_start_collector)
+    end
   end),
   erlang:register(send_collector, SendCollector),
-  [proc_lib:start_link(?MODULE, start_sender, [{channel, I}]) || I <- lists:seq(1,ChannelCount)],
+  Senders = [proc_lib:start_link(?MODULE, start_sender, [{channel, I}]) || I <- lists:seq(1,ChannelCount)],
+  send_collector ! {senders, Senders},
 
   spawn(fun() ->
     Channels = [{channel,I} || I <- lists:seq(1,ChannelCount)],
@@ -50,24 +56,30 @@ run1(ChannelCount) ->
   ok.
 
 
-send_collector(Total) ->
+send_collector(Total, Senders) ->
   receive
-    {messages, _Channel, Count} -> send_collector(Total + Count);
+    {messages, _Channel, Count} -> send_collector(Total + Count, Senders);
     flush ->
       put(now, erlang:now()),
-      send_collector(0);
+      send_collector(0, Senders);
     dump ->
       Delta = timer:now_diff(erlang:now(), get(now)) div 1000000,
+      AliveSenders = [Pid || Pid <- Senders, erlang:is_process_alive(Pid)],
+      case length(Senders) - length(AliveSenders) of
+        0 -> ok;
+        Dead -> io:format("dead senders: ~p~n", [Dead])
+      end,
       if Delta > 0 ->
         io:format("Send: ~B msg/s~n", [Total div Delta]);
       true -> ok end,
-      send_collector(Total)
+      send_collector(Total, Senders)
   end.
 
 
 start_sender(Chan) ->
   timer:send_interval(1000, dump),
   dps:new(Chan),
+  put(msg_number, 1),
   proc_lib:init_ack(self()),
   JSON = iolist_to_binary(mochijson2:encode([lists:seq(1,512)])),
   run1_sender(Chan, 1, 1, JSON).
@@ -76,7 +88,9 @@ run1_sender(Chan, Number, Count, JSON) ->
   Count1 = receive
     dump -> send_collector ! {messages, Chan, Count}, 0
   after 0 -> Count + 1 end,
-  dps:publish(Chan, {Chan, Number, JSON}),
+  TS = dps:publish(Chan, {Chan, Number, JSON}),
+  is_number(TS) orelse error({failed_publish,Chan,Number}),
+  put(msg_number,Number+1),
   run1_sender(Chan, Number + 1, Count1, JSON).
 
 
