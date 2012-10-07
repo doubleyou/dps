@@ -32,7 +32,7 @@ run1(ChannelCount) ->
 
   SendCollector = spawn(fun() ->
     timer:send_interval(1000, dump),
-    timer:send_interval(10000, flush),
+    timer:send_interval(60000, flush),
     put(now, erlang:now()),
     receive
       {senders, Senders} -> send_collector(0, Senders)
