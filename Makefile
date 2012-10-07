@@ -1,5 +1,8 @@
-all:
-	./rebar compile
+all: deps/cowboy/ebin/cowboy.beam
+	./rebar compile skip_deps=true
+
+deps/cowboy/ebin/cowboy.beam:
+	./rebar get-deps compile
 
 full:
 	./rebar get-deps compile
