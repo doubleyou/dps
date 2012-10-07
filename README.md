@@ -3,6 +3,7 @@ DPS - Distributed Pub/Sub
 
 Multichannel distributed pub/sub messaging, with full duplication across several nodes.
 
+Replication has protection from lag: if neighbour is too slow, replication if suspended.
 
 Usage:
 
