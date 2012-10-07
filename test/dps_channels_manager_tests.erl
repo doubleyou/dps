@@ -173,4 +173,24 @@ test_node_refill_history_after_restart(#env{slaves = Slaves}) ->
   ok.
 
 
+
+test_replication_works(#env{slaves = [{Slave,_,_}|_]}) ->
+  assert_remote_start(),
+
+  dps:new(chan1),
+
+  RemoteChanel = rpc:call(Slave, dps_channel, find, [chan1]),
+  ?assertEqual(0, dps:subscribe(RemoteChanel)),
+  dps:publish(chan1, message1),
+
+  receive
+    Reply -> ?assertMatch({dps_msg, chan1, _, [message1]}, Reply)
+  after
+    1000 ->
+      M = dps_channel:messages(RemoteChanel, 0),
+      ?debugFmt("There: ~p", [M]),
+      error(parent_timeout)
+  end.
+
+
 -endif.

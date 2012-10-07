@@ -61,7 +61,7 @@ publish(Tag, Msg) ->
 publish_local(Tag, Msg, TS) ->
     try gen_server:call(find(Tag), {publish, Msg, TS})
     catch
-        throw:{no_channel, Tag} -> ok
+        throw:{no_channel, Tag} -> no_channel
     end.
 
 
@@ -88,6 +88,8 @@ unsubscribe(Tag) ->
 
 
 -spec find(Tag :: term()) -> Pid :: pid().
+find(Pid) when is_pid(Pid) ->
+    Pid;
 find(Tag) ->
     Pid = dps_channels_manager:find(Tag),
     Pid =/= undefined orelse erlang:throw({no_channel,Tag}),
@@ -189,11 +191,11 @@ handle_info({replication_messages, LastTS1, Msgs}, State = #state{messages = Mes
         prepend_sorted(M,List)
     end, Messages, Msgs),
 
-    SendMessage = {ok, Tag, LastTS, [M || {_TS, M} <- Msgs]},
+    SendMessage = {dps_msg, Tag, LastTS, [M || {_TS, M} <- Msgs]},
     [Sub ! SendMessage || {Sub, _Ref} <- Subscribers],
     NewState = State#state{last_ts = LastTS, messages = Messages1 },
     {noreply, NewState};
-    
+
 handle_info({'DOWN', Ref, _, Pid, _}, State = #state{subscribers=Subscribers}) ->
     {noreply, State#state{subscribers = Subscribers -- [{Pid,Ref}]}};
 handle_info(_Info, State) ->
@@ -221,6 +223,12 @@ receive_multi_fetch_results(LastTS, Messages) ->
             {ok, LastTS, Messages}
     end.
 
+%% WARNING!
+%% This is a very thin place. We use erlang:now() together with
+%% messages contents as a unique identifier across nodes
+%%
+prepend_sorted({TS,Msg}, [{TS,Msg}|_] = Messages) ->
+    Messages;
 
 prepend_sorted({TS1,Msg1}, [{TS2,_Msg2}|_] = Messages) when TS1 >= TS2 ->
     [{TS1,Msg1}|Messages];
