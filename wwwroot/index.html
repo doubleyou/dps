@@ -43,7 +43,6 @@ window.servers = [
 
 
 function connect(last_ts) {
-  var number = Math.floor(Math.random()*servers.length);
   $("#server_list .connecting").removeClass("connecting");
   $("#server_list .connected").removeClass("connected");
   $("#server"+number).addClass("connecting");
@@ -77,6 +76,7 @@ function poll(number, last_ts) {
       //     poll(number, reply.ts);
       //   }, 100);
       // }
+      window.number = (number + 1) % servers.length;
       setTimeout(function() {connect(last_ts); }, 500);
     },
     timeout: 50000,
@@ -118,13 +118,14 @@ function push(data, count) {
     $("#flash_error").html("Couldn't send message");
     return;
   }
-  var number = Math.floor(Math.random()*servers.length);
-  $("#flash_error").html("Sending. Left retries: "+count);
+  var send_number = count % servers.length;
+  $("#flash_error").html("Sending. Left retries: "+count + " /"+send_number + ": "+"http://"+servers[send_number]+"/push");
 
   $.ajax({
-    url : "http://"+servers[number]+"/push",
+    url : "http://"+servers[send_number]+"/push",
     data : data,
     contentType : "application/json",
+    crossDomain : true,
     type : "POST",
     error: function() {
       setTimeout(function() {
@@ -142,6 +143,8 @@ $(function() {
   for(i = 0; i < servers.length; i++) {
     $("#server_list").append("<li><span id='server"+i+"'>"+servers[i] + "</span></li>");
   }
+
+  window.number = Math.floor(Math.random()*servers.length);
 
   connect(0);
   $("#push").submit(onsubmit);
