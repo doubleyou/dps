@@ -29,6 +29,15 @@ teardown({Modules}) ->
   ok.
 
 
+prepend_sorted_test_() ->
+  [
+  ?_assertEqual([{2,b},{1,a}], dps_channel:prepend_sorted({2,b}, [{1,a}])),
+  ?_assertEqual([{2,b},{1,a}], dps_channel:prepend_sorted({1,a}, [{2,b}])),
+  ?_assertEqual([{3,c},{2,b},{1,a}], dps_channel:prepend_sorted({3,c}, [{2,b},{1,a}])),
+  ?_assertEqual([{3,c},{2,b},{1,a}], dps_channel:prepend_sorted({2,b}, [{3,c},{1,a}])),
+  ?_assertEqual([{4,d},{3,c},{2,b},{1,a}], dps_channel:prepend_sorted({2,b}, [{4,d},{3,c},{1,a}]))
+  ].
+
 
 test_channel_publish() ->
   dps_channels_manager:create(test_channel),

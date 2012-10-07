@@ -214,8 +214,15 @@ receive_multi_fetch_results(LastTS, Messages) ->
     end.
 
 
-prepend_sorted({TS,Msg}, Messages) ->
-    [{TS,Msg}|Messages].
+prepend_sorted({TS1,Msg1}, [{TS2,_Msg2}|_] = Messages) when TS1 >= TS2 ->
+    [{TS1,Msg1}|Messages];
+
+prepend_sorted({TS,Msg}, []) ->
+    [{TS,Msg}];
+
+prepend_sorted({TS1,Msg1}, [{TS2,Msg2}|Messages]) when TS1 < TS2 ->
+    [{TS2,Msg2}|prepend_sorted({TS1,Msg1}, Messages)].
+
 
 
 messages_newer(Messages, TS) ->

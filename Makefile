@@ -7,7 +7,9 @@ full:
 clean:
 	./rebar clean
 
-test: all
+.PHONY: test
+
+test:
 	./rebar eunit skip_deps=true
 
 1:
