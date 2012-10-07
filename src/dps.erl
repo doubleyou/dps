@@ -6,7 +6,8 @@
          subscribe/1,
          subscribe/2,
          multi_fetch/2,
-         multi_fetch/3
+         multi_fetch/3,
+         start/0
          ]).
 
 
@@ -15,6 +16,10 @@
 -type timestamp() :: non_neg_integer().
 
 -export_type([message/0, timestamp/0, tag/0]).
+
+-spec start() -> ok.
+start() ->
+    application:start(dps).
 
 -spec new() -> Tag :: binary().
 new() ->

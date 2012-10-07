@@ -3,8 +3,12 @@
 
 
 -define(COUNT, 32).
+-define(NODE_COUNT, 3).
 
 run1() ->
+  pong = net_adm:ping(bench1@localhost),
+  pong = net_adm:ping(bench2@localhost),
+  rpc:multicall(nodes(), dps, start, []),
   run1(3).
 
 run1(ChannelCount) ->
@@ -12,6 +16,7 @@ run1(ChannelCount) ->
 
   SendCollector = spawn(fun() ->
     timer:send_interval(1000, dump),
+    timer:send_interval(10000, flush),
     put(now, erlang:now()),
     send_collector(0)
   end),
@@ -33,6 +38,9 @@ run1(ChannelCount) ->
 send_collector(Total) ->
   receive
     {messages, _Channel, Count} -> send_collector(Total + Count);
+    flush ->
+      put(now, erlang:now()),
+      send_collector(0);
     dump ->
       Delta = timer:now_diff(erlang:now(), get(now)) div 1000000,
       if Delta > 0 ->
@@ -46,14 +54,15 @@ start_sender(Chan) ->
   timer:send_interval(1000, dump),
   dps:new(Chan),
   proc_lib:init_ack(self()),
-  run1_sender(Chan, 1, 1).
+  JSON = iolist_to_binary(mochijson2:encode([lists:seq(1,512)])),
+  run1_sender(Chan, 1, 1, JSON).
 
-run1_sender(Chan, Number, Count) ->
+run1_sender(Chan, Number, Count, JSON) ->
   Count1 = receive
     dump -> send_collector ! {messages, Chan, Count}, 0
   after 0 -> Count + 1 end,
-  dps:publish(Chan, {Chan, Number}),
-  run1_sender(Chan, Number + 1, Count1).
+  dps:publish(Chan, {Chan, Number, JSON}),
+  run1_sender(Chan, Number + 1, Count1, JSON).
 
 
 

@@ -27,7 +27,9 @@ test:
 
 bench:
 	./rebar compile skip_deps=true
-	erl -pa ebin -smp enable -s dps_benchmark run1
+	erl -pa ebin -smp enable -sname bench1@localhost -setcookie cookie -detached
+	erl -pa ebin -smp enable -sname bench2@localhost -setcookie cookie -detached
+	erl -pa ebin -pa deps/*/ebin -smp enable -s dps_benchmark run1 -sname bench@localhost -setcookie cookie
 
 PLT_NAME=.dps.plt
 
