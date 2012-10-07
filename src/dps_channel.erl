@@ -21,6 +21,7 @@
          subscribe/2,
          multi_fetch/2,
          multi_fetch/3,
+         find/1,
 
 
          prepend_sorted/2,
@@ -181,11 +182,18 @@ handle_info(replicate_from_peers, State = #state{tag = Tag}) ->
 handle_info({give_me_messages, Pid}, State = #state{last_ts = LastTS, messages = Messages}) ->
     Pid ! {replication_messages, LastTS, Messages},
     {noreply, State};
-handle_info({replication_messages, LastTS, Msgs}, State = #state{messages = Messages,
-                                                subscribers = Subscribers}) ->
-    [[Sub ! {dps_msg, Msg} || Msg <- Msgs] || {Sub, _Ref} <- Subscribers],
-    NewState = State#state{last_ts = LastTS, messages = lists:usort(Messages ++ Msgs) },
+handle_info({replication_messages, LastTS1, Msgs}, State = #state{messages = Messages, tag = Tag,
+                                                subscribers = Subscribers, last_ts = LastTS2}) ->
+    LastTS = lists:max([LastTS1, LastTS2]),
+    Messages1 = lists:foldl(fun(M, List) ->
+        prepend_sorted(M,List)
+    end, Messages, Msgs),
+
+    SendMessage = {ok, Tag, LastTS, [M || {_TS, M} <- Msgs]},
+    [Sub ! SendMessage || {Sub, _Ref} <- Subscribers],
+    NewState = State#state{last_ts = LastTS, messages = Messages1 },
     {noreply, NewState};
+    
 handle_info({'DOWN', Ref, _, Pid, _}, State = #state{subscribers=Subscribers}) ->
     {noreply, State#state{subscribers = Subscribers -- [{Pid,Ref}]}};
 handle_info(_Info, State) ->

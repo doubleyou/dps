@@ -84,6 +84,9 @@ test_channel_refetch_new_messages() ->
   ?assertEqual({ok, 4, [message3, message4]}, dps_channel:messages(test_channel, 2)),
   ok.
 
+
+
+
 test_channel_messages_limit() ->
   dps_channels_manager:create(test_channel),
   TotalLimit = dps_channel:messages_limit(),
@@ -202,7 +205,46 @@ test_proper_last_test_on_empty_multi_fetch() ->
 
 
 
+test_replication_messages() ->
+  dps_channels_manager:create(test_channel),
 
+  meck:expect(dps_util, ts, fun() -> 1 end),
+  dps_channel:publish(test_channel, message1),
+
+  meck:expect(dps_util, ts, fun() -> 3 end),
+  dps_channel:publish(test_channel, message3),
+
+
+  Self = self(),
+  _Child = spawn_link(fun() ->
+    dps_channel:subscribe(test_channel, 3),
+    Self ! go_on,
+    receive
+      Reply -> Self ! {child, Reply}
+    after
+      1000 -> erlang:error(child_timeout)
+    end
+  end),
+
+  receive
+    go_on -> ok
+  after
+    1000 -> error(parent1_timeout)
+  end,
+
+  Pid = dps_channel:find(test_channel),
+  Pid ! {replication_messages, 4, [{2,message2},{4,message4}]},
+
+  receive
+    {child, Reply} ->
+      ?assertEqual({ok, test_channel, 4, [message2,message4]}, Reply)
+  after
+    1000 -> error(parent_timeout)
+  end,
+
+  ?assertEqual({ok, 4, [message1,message2,message3,message4]}, dps_channel:messages(test_channel,0)),
+
+  ok.
 
 
 
