@@ -153,19 +153,22 @@ test_node_refill_history_after_restart(#env{slaves = Slaves}) ->
 
   assert_remote_start(),
 
-  [dps_channel:publish(chan1, N) || N <- lists:seq(1,200)],
-  [dps_channel:publish(chan2, N) || N <- lists:seq(1,200)],
+  ChannelLimit = dps_channel:messages_limit(),
+
+
+  [dps_channel:publish(chan1, N) || N <- lists:seq(1,4*ChannelLimit)],
+  [dps_channel:publish(chan2, N) || N <- lists:seq(1,4*ChannelLimit)],
 
   {Slave, Host, Name} = hd(Slaves),
 
-  ?assertMatch({ok, _, Messages} when length(Messages) == 100, rpc:call(Slave, dps_channel, messages, [chan1, 0])),
+  ?assertMatch({ok, _, Messages} when length(Messages) < 2*ChannelLimit, rpc:call(Slave, dps_channel, messages, [chan1, 0])),
 
   slave:stop(Slave),
   {ok, Slave} = slave:start_link(Host, Name, "-setcookie mytestcookie -pa ebin "),
   {ok, [AppDesc]} = file:consult("../ebin/dps.app"),
   rpc:call(Slave, application, load, [AppDesc]),
   ?assertEqual(ok, rpc:call(Slave, application, start, [dps])),
-  ?assertMatch({ok, _, Messages} when length(Messages) == 100, rpc:call(Slave, dps_channel, messages, [chan1, 0])),
+  ?assertMatch({ok, _, Messages} when length(Messages) < 2*ChannelLimit, rpc:call(Slave, dps_channel, messages, [chan1, 0])),
 
   ok.
 

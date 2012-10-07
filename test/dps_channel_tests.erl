@@ -79,15 +79,28 @@ test_channel_messages_limit() ->
   dps_channels_manager:create(test_channel),
   TotalLimit = dps_channel:messages_limit(),
 
-  [dps_channel:publish(test_channel, {messages, I}) || I <- lists:seq(1, TotalLimit)],
+  LastTS1 = lists:foldl(fun(I, PrevTS) ->
+    TS = dps_channel:publish(test_channel, {message, I}),
+    ?assertMatch(_ when TS > PrevTS, {TS,PrevTS}),
+    TS
+  end, 0, lists:seq(1, TotalLimit)),
   ?assertMatch({ok, _, Msg} when length(Msg) == TotalLimit, dps_channel:messages(test_channel, 0)),
 
-  [dps_channel:publish(test_channel, {messages, I}) || I <- lists:seq(TotalLimit+1, TotalLimit*3)],
+  _LastTS2 = lists:foldl(fun(I, PrevTS) ->
+    TS = dps_channel:publish(test_channel, {message, I}),
+    ?assertMatch(_ when TS > PrevTS, {TS,PrevTS}),
+    TS
+  end, LastTS1, lists:seq(TotalLimit+1, TotalLimit*4)),
+
   {ok, _, Messages} = dps_channel:messages(test_channel, 0),
   ?assertMatch(Len when Len < TotalLimit*2, length(Messages)),
 
-  Numbers = [I || {messages, I} <- Messages],
+  Numbers = [I || {message, I} <- Messages],
   % ?assertEqual(2, lists:min(Numbers)),
+  case lists:min(Numbers) of
+    A when A =< TotalLimit -> ?debugFmt("Messages: ~240p~n", [Numbers]);
+    _ -> ok
+  end,
   ?assertMatch(Num when Num > TotalLimit, lists:min(Numbers)),
   ok.
 

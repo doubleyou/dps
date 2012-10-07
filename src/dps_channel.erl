@@ -43,9 +43,9 @@
 %% External API
 %%
 
--spec messages_limit() -> 100.
+-spec messages_limit() -> non_neg_integer().
 messages_limit() ->
-    100.
+    1000.
 
 
 -spec publish(Tag :: dps:tag(), Msg :: dps:message()) -> TS :: dps:timestamp().
