@@ -114,6 +114,16 @@ collect_receive_stats(Stats, Messages) ->
 %   run1_receiver(Channels, Number + length(Messages), LastTS).
 
 
+
+poll_loop(URL) ->
+  {ok, Msgs, Poll} = poll(URL),
+  poll_loop1(Poll, length(Msgs)).
+
+poll_loop1(Poll, Count) ->
+  {ok, Msgs, Poll1} = poll(Poll),
+  io:format("Received: ~p~n", [length(Msgs)]),
+  poll_loop1(Poll1, Count + length(Msgs)).
+
 -record(poll, {
   url,
   ts = 0,
@@ -156,6 +166,8 @@ receive_poll_response(#poll{socket = Socket} = Poll) ->
     {ok, {http_response, _, _Code, _}} ->
       io:format("Bad response code: ~p~n", [_Code]),
       restart_poll(Poll);
+    {error, closed} ->
+      restart_poll(Poll#poll{retries = 0});
     {error, _Error} ->
       io:format("Error response: ~p~n", [_Error]),
       restart_poll(Poll)
@@ -171,9 +183,8 @@ receive_poll_headers(#poll{socket = Socket} = Poll, Len) ->
       is_integer(Len) orelse throw({response_without_length, Poll#poll.url}),
       inet:setopts(Socket, [{packet,raw},{active,false}]),
       {ok, Body} = gen_tcp:recv(Socket, Len, 10000),
-      {struct, Val} = mochijson2:decode(Body),
-      TS = proplists:get_value(<<"ts">>, Val),
-      {ok, Val, Poll#poll{retries = 0, ts = TS}};
+      {struct, [{<<"ts">>, TS}, {<<"messages">>,Msgs}]} = mochijson2:decode(Body),
+      {ok, Msgs, Poll#poll{retries = 0, ts = TS}};
     {error, _} ->
       restart_poll(Poll)
   end.
