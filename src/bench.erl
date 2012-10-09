@@ -1,12 +1,12 @@
 -module(bench).
 
--export([start/0, start/1]).
+-export([start/0, start/1, stats/0]).
 
 -define(OPTIONS, [
-    {clients, 10},
+    {clients, 1000},
     {channels, 10},
     {channels_per_client, {1, 2}},
-    {pub_interval, {1000, 2000}},
+    {pub_interval, 1000},
     {hosts, ["localhost"]}
 ]).
 -define(PORT, 9201).
@@ -23,6 +23,9 @@
 start() ->
     start([]).
 
+stats() ->
+    ets:match(stats, '$1').
+
 start(Opts) ->
     Options = Opts ++ ?OPTIONS,
 
@@ -34,8 +37,11 @@ start(Opts) ->
     PubInterval = proplists:get_value(pub_interval, Options),
     HL = length(Hosts),
 
+    ets:new(stats, [public, named_table, set]),
+    ets:insert(stats, {publishes, 0}),
+
     [proc_lib:spawn_link(fun() ->
-            client(Channels, ChPC, lists:nth(I rem HL + 1, Hosts), PubInterval)
+            client(Channels, ChPC, lists:nth(I rem HL + 1, Hosts), PubInterval, round(PubInterval * I / Clients))
         end)
         || I <- lists:seq(1, Clients)],
     
@@ -44,14 +50,17 @@ start(Opts) ->
 make_channel(I) ->
     lists:concat(["channel_", 10000 + I]).
 
-client(Channels, {MinChannels, MaxChannels}, Host, {MinTimeout, MaxTimeout}) ->
+client(Channels, {MinChannels, MaxChannels}, Host, Interval, _TimeOffset) ->
     random:seed(now()),
     CL = length(Channels),
     TotalChannels = random:uniform(MaxChannels - MinChannels + 1) + MinChannels - 1,
-    Interval = random:uniform(MaxTimeout - MinTimeout + 1) + MinTimeout - 1,
     ClientChannels = [lists:nth(random:uniform(CL), Channels)
         || _ <- lists:seq(1, TotalChannels)],
 
+    %% We uniformly distribute clients over a publish interval period
+    %% in order to prevent saw-like performance.
+    random:seed(now()),
+    timer:sleep(random:uniform(Interval)),
     client_init(ClientChannels, Interval, Host).
 
 client_init(Channels, Interval, Host) ->
@@ -81,6 +90,7 @@ push(State = #state{sock = S}) ->
     [
         begin
         gen_tcp:send(S, Packet),
+        ets:update_counter(stats, publishes, 1),
         gen_tcp:recv(S, 0, 5000)
         end
             || Packet <- State#state.push_packets
@@ -94,7 +104,7 @@ poll(State = #state{poll_packet = {Pref, Suff}, ts = TS, sock = S}) ->
     case gen_tcp:recv(S, 0, 5000) of
         {ok, {http_response, _, 200, _ }} ->
             poll_headers(State, S, -1);
-        {error, Error} ->
+        {error, _Error} ->
             client_connect(State);
         V ->
             exit(V)
@@ -110,7 +120,7 @@ poll_headers(State, S, ContentLength) ->
             inet:setopts(S, [{packet, raw}]),
             gen_tcp:recv(S, 10000),
             client_loop(State);
-        {error, Error} ->
+        {error, _Error} ->
             client_connect(State);
         V ->
             exit(V)
