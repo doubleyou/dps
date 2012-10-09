@@ -41,7 +41,7 @@ start() ->
     ],
 
 
-    cowboy:start_http(dps_http_listener, 100, [{port, Port}],
+    cowboy:start_http(dps_http_listener, 1000, [{port, Port}],
       [{dispatch, Dispatch}]
     ).
 

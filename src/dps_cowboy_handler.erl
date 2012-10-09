@@ -29,19 +29,22 @@ json_headers() ->
 
 handle(Req, poll) ->
   {TS, Req2} = cowboy_req:qs_val(<<"ts">>, Req),
-  {RawChannels, _} = cowboy_req:qs_val(<<"channels">>, Req),
+  {RawChannels, Req3} = cowboy_req:qs_val(<<"channels">>, Req2),
   Channels = [list_to_binary(L) || L <- string:tokens(binary_to_list(RawChannels), ",")],
   LastTS = case TS of
     undefined -> 0;
     _ -> list_to_integer(binary_to_list(TS))
   end,
   [dps:new(Channel) || Channel <- Channels],
-  {ok, LastTS, Messages} = dps:multi_fetch(Channels, LastTS, 1000),
+  {ok, LastTS1, Messages} = dps:multi_fetch(Channels, LastTS, 1000),
 %%  JSON = mochijson2:encode({struct, [{ts, LastTS}, {messages, Messages}]}),
 %%  {ok, Req3} = cowboy_req:reply(200, json_headers(), JSON, Req2),
-  Reply = [integer_to_list(LastTS), ",", Messages],
-  {ok, Req3} = cowboy_req:reply(200, [], Reply, Req2),
-  {ok, Req3, poll};
+  Reply = case length(Messages) of
+    0 -> [integer_to_list(LastTS1)];
+    _ -> [integer_to_list(LastTS1), ",", Messages]
+  end,
+  {ok, Req4} = cowboy_req:reply(200, [], Reply, Req3),
+  {ok, Req4, poll};
 
 
 handle(Req, push) ->
@@ -59,7 +62,7 @@ terminate(_Req, _State) ->
 split_post(<<"|",Rest/binary>>, Acc) ->
     [Acc, Rest];
 split_post(<<C:8,Rest/binary>>, Acc) ->
-    split_post(<<Acc/binary,C:8>>, Rest).
+    split_post(Rest, <<Acc/binary,C:8>>).
 
 
 

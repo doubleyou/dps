@@ -39,6 +39,7 @@ start(Opts) ->
 
     ets:new(stats, [public, named_table, set]),
     ets:insert(stats, {publishes, 0}),
+    ets:insert(stats, {messages, 0}),
 
     [proc_lib:spawn_link(fun() ->
             client(Channels, ChPC, lists:nth(I rem HL + 1, Hosts), PubInterval, round(PubInterval * I / Clients))
@@ -85,20 +86,25 @@ client_connect(State) ->
     client_loop(State#state{sock = S}).
 
 push(State = #state{sock = S}) ->
-    inet:setopts(S, [{packet, raw}]),
+    inet:setopts(S, [{packet, raw}, {active, false}]),
     erlang:send_after(State#state.publish_interval, self(), publish),
-    [
-        begin
-        gen_tcp:send(S, Packet),
-        ets:update_counter(stats, publishes, 1),
-        gen_tcp:recv(S, 0, 5000)
-        end
-            || Packet <- State#state.push_packets
-    ],
+    push_all(State, State#state.push_packets),
     client_loop(State).
 
+push_all(State, []) ->
+    client_loop(State);
+push_all(State = #state{sock = S}, [Packet | Rest]) ->
+    case gen_tcp:send(S, Packet) of
+        ok ->
+            ets:update_counter(stats, publishes, 1),
+            push_all(State, Rest);
+        {error, _} ->
+            {ok, NewSock} = gen_tcp:connect(State#state.host, ?PORT, [binary, {packet, raw}, {active, false}]),
+            push_all(State#state{sock=NewSock}, [Packet | Rest])
+    end.
+
 poll(State = #state{poll_packet = {Pref, Suff}, ts = TS, sock = S}) ->
-    inet:setopts(S, [{packet, http}]),
+    inet:setopts(S, [{packet, http}, {active, false}]),
     P = [Pref, integer_to_list(TS), Suff],
     gen_tcp:send(S, P),
     case gen_tcp:recv(S, 0, 5000) of
@@ -107,7 +113,7 @@ poll(State = #state{poll_packet = {Pref, Suff}, ts = TS, sock = S}) ->
         {error, _Error} ->
             client_connect(State);
         V ->
-            exit(V)
+            client_connect(State)
     end.
 
 poll_headers(State, S, ContentLength) ->
@@ -117,8 +123,13 @@ poll_headers(State, S, ContentLength) ->
         {ok, {http_header, _, _, _, _}} ->
             poll_headers(State, S, ContentLength);
         {ok, http_eoh} ->
-            inet:setopts(S, [{packet, raw}]),
-            gen_tcp:recv(S, 10000),
+            inet:setopts(S, [binary, {packet, raw}, {active, false}]),
+            case gen_tcp:recv(S, 10000) of
+                {ok, B} ->
+                    ets:update_counter(stats, messages, size(B) div 36);
+                _ ->
+                    ok
+            end,
             client_loop(State);
         {error, _Error} ->
             client_connect(State);
@@ -127,7 +138,8 @@ poll_headers(State, S, ContentLength) ->
     end.
 
 push_packets(Channels) ->
-    [iolist_to_binary([<<"POST /push HTTP/1.1\r\nHost: localhost\r\nConnection: keepalive\r\nContent-Length:36\r\n\r\n">>, Channel, <<"y u no love node.js?">>])
+    [iolist_to_binary([<<"POST /push HTTP/1.1\r\nHost: localhost:9201\r\nAccept: application/json\r\nContent-type: application/json\r\nConnection: keepalive\r\nContent-Length:34\r\n\r\n">>, Channel, <<"|y u no love node.js?">>])
+%%    [[<<"POST /push HTTP/1.1\r\nUser-Agent: curl/7.19.6 (i386-apple-darwin10.5.0) libcurl/7.19.6 OpenSSL/0.9.8r zlib/1.2.5\r\nHost: localhost:9201\r\nAccept: application/json\r\nContent-Length: 34\r\n\r\n">>, Channel, <<"|y u no love node.js?">>]
         || Channel <- Channels].
 
 poll_packet(Channels) ->
