@@ -58,49 +58,42 @@ client(Channels, {MinChannels, MaxChannels}, Host, Interval, _TimeOffset) ->
     ClientChannels = [lists:nth(random:uniform(CL), Channels)
         || _ <- lists:seq(1, TotalChannels)],
 
-    %% We uniformly distribute clients over a publish interval period
-    %% in order to prevent saw-like performance.
-    random:seed(now()),
-    timer:sleep(random:uniform(Interval)),
     client_init(ClientChannels, Interval, Host).
 
 client_init(Channels, Interval, Host) ->
-    erlang:send_after(Interval, self(), publish),
-    client_connect(#state{
+    State = #state{
         push_packets = push_packets(Channels),
         poll_packet = poll_packet(Channels),
         host = Host,
         publish_interval = Interval
-    }).
+    },
+    proc_lib:spawn_link(fun() ->
+        publisher_connect(State)
+    end),
+    client_connect(State).
 
-client_loop(State) ->
-    receive
-        publish ->
-            push(State)
-    after 0 ->
-        poll(State)
-    end.
+publisher_connect(State) ->
+    {ok, S} = gen_tcp:connect(State#state.host, ?PORT, [{active, false}]),
+    publisher_loop(State#state{sock = S}).
+
+publisher_loop(State = #state{publish_interval = Interval}) ->
+    timer:sleep(Interval),
+    push(State, State#state.push_packets).
 
 client_connect(State) ->
     {ok, S} = gen_tcp:connect(State#state.host, ?PORT, [{active, false}]),
-    client_loop(State#state{sock = S}).
+    poll(State#state{sock = S}).
 
-push(State = #state{sock = S}) ->
-    inet:setopts(S, [{packet, raw}, {active, false}]),
-    erlang:send_after(State#state.publish_interval, self(), publish),
-    push_all(State, State#state.push_packets),
-    client_loop(State).
-
-push_all(State, []) ->
-    client_loop(State);
-push_all(State = #state{sock = S}, [Packet | Rest]) ->
+push(State, []) ->
+    publisher_loop(State);
+push(State = #state{sock = S}, [Packet | Rest]) ->
     case gen_tcp:send(S, Packet) of
         ok ->
             ets:update_counter(stats, publishes, 1),
-            push_all(State, Rest);
+            push(State, Rest);
         {error, _} ->
             {ok, NewSock} = gen_tcp:connect(State#state.host, ?PORT, [binary, {packet, raw}, {active, false}]),
-            push_all(State#state{sock=NewSock}, [Packet | Rest])
+            push(State#state{sock=NewSock}, [Packet | Rest])
     end.
 
 poll(State = #state{poll_packet = {Pref, Suff}, ts = TS, sock = S}) ->
@@ -112,7 +105,7 @@ poll(State = #state{poll_packet = {Pref, Suff}, ts = TS, sock = S}) ->
             poll_headers(State, S, -1);
         {error, _Error} ->
             client_connect(State);
-        V ->
+        _ ->
             client_connect(State)
     end.
 
@@ -130,7 +123,7 @@ poll_headers(State, S, ContentLength) ->
                 _ ->
                     ok
             end,
-            client_loop(State);
+            poll(State);
         {error, _Error} ->
             client_connect(State);
         V ->
