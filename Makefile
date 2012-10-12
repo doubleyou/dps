@@ -16,7 +16,7 @@ test:
 	./rebar eunit skip_deps=true
 
 1:
-	erl -pa ebin -pa deps/*/ebin -s dps_example -name node1@10.212.182.62
+	erl -pa ebin -pa deps/*/ebin -s dps_example -sname node1
 
 2:
 	erl -pa ebin -pa deps/*/ebin -s dps_example -sname node2
