@@ -4,3 +4,4 @@ erl_crash.dump
 deps/
 .dps.plt
 node_modules/
+.vagrant
