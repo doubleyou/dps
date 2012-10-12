@@ -1,6 +1,6 @@
 -module(dps_example).
 
--export([start/0]).
+-export([start/0, start_everything/0]).
 
 
 
@@ -18,6 +18,9 @@ start() ->
 
     dps:new(example_channel1),
     dps:new(example_channel2),
+    start_everything().
+
+start_everything() ->
 
     application:start(ranch),
     application:start(cowboy),
