@@ -54,7 +54,12 @@ messages_limit() ->
 -spec publish(Tag :: dps:tag(), Msg :: dps:message()) -> TS :: dps:timestamp().
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
-    gen_server:call(find(Tag), {publish, Msg, TS}),
+    try gen_server:call(find(Tag), {publish, Msg, TS})
+    catch
+      exit:{timeout,_} = Error ->
+        error_logger:error_msg("Error timeout in publish to ~s:~n~p~n", [Tag, process_info(find(Tag))]),
+        erlang:raise(exit, Error, erlang:get_stacktrace())
+    end,
     % rpc:multicall(nodes(), ?MODULE, publish_local, [Tag, Msg, TS]),
     TS.
 
