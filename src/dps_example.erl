@@ -18,9 +18,12 @@ start() ->
 
     dps:new(example_channel1),
     dps:new(example_channel2),
-    start_everything().
+    start_everything(Port).
 
 start_everything() ->
+    start_everything(9201).
+
+start_everything(Port) ->
 
     application:start(ranch),
     application:start(cowboy),
