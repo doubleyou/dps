@@ -30,6 +30,7 @@
          messages_limit/0,
          publish_local/3,
          replicate_messages/3,
+         replicate/5,
          msgs_from_peers/2]).
 
 
@@ -54,10 +55,10 @@ messages_limit() ->
 -spec publish(Tag :: dps:tag(), Msg :: dps:message()) -> TS :: dps:timestamp().
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
-    try gen_server:call(find(Tag), {publish, Msg, TS})
+    try gen_server:call(find(Tag), {publish, Msg, TS},500)
     catch
       exit:{timeout,_} = Error ->
-        error_logger:error_msg("Error timeout in publish to ~s:~n~p~n", [Tag, process_info(find(Tag))]),
+        ?debugFmt("Error timeout in publish to ~s:~n~p~n", [Tag, process_info(find(Tag))]),
         erlang:raise(exit, Error, erlang:get_stacktrace())
     end,
     % rpc:multicall(nodes(), ?MODULE, publish_local, [Tag, Msg, TS]),
@@ -146,31 +147,28 @@ start_link(Tag) ->
 -spec init(Tag :: dps:tag()) -> {ok, #state{}}.
 init(Tag) ->
     self() ! replicate_from_peers,
-    {ok, #state{tag = Tag, limit = messages_limit()}}.
+    {ok, #state{tag = Tag, limit = ?MODULE:messages_limit()}}.
 
 handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit = Limit,
                             replicator = Replicator, subscribers = Subscribers, tag = Tag}) ->
     Messages1 = prepend_sorted({TS,Msg}, Msgs),
+    T1 = erlang:now(),
     Messages = if
         length(Messages1) >= Limit*2 -> lists:sublist(Messages1, Limit);
         true -> Messages1
     end,
     [{LastTS, _}|_] = Messages,
-
+    T2 = erlang:now(),
     distribute_message({dps_msg, Tag, LastTS, [Msg]}, Subscribers, Pid),
+    T3 = erlang:now(),
 
-    NewState = State#state{messages = Messages, last_ts = LastTS},
-    case erlang:process_info(Replicator, message_queue_len) of
-        {message_queue_len, QueueLen} when QueueLen > Limit ->
-            % gen_server:call(Replicator, {message, LastTS, {TS, Msg}});
-            % for now we just skip messages, if replicator is too slow
-            ok;
-        undefined ->
-            ok;
-        _ ->
-            Replicator ! {message, LastTS, {TS, Msg}}
-    end,
-    {reply, ok, NewState};
+    Delta1 = timer:now_diff(T2,T1) div 1000,
+    Delta2 = timer:now_diff(T3,T1) div 1000,
+    if Delta1 > 0 -> ?debugFmt("delta1 = ~p", [Delta1]); true -> ok end,
+    if Delta2 > 0 -> ?debugFmt("delta2 = ~p", [Delta2]); true -> ok end,
+
+    % ?MODULE:replicate(Replicator, LastTS, TS, Msg, Limit),
+    {reply, ok, State#state{messages = Messages, last_ts = LastTS}};
 
 handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag = Tag,
                                                 subscribers = Subscribers, last_ts = LastTS}) ->
@@ -206,6 +204,17 @@ distribute_message(Message, Subscribers, Pid) ->
     [Sub ! Message || {Sub, _Ref} <- Subscribers, Sub =/= Pid].
 
 
+replicate(Replicator, LastTS, TS, Msg, Limit) ->
+    case erlang:process_info(Replicator, message_queue_len) of
+        {message_queue_len, QueueLen} when QueueLen > Limit ->
+            % gen_server:call(Replicator, {message, LastTS, {TS, Msg}});
+            % for now we just skip messages, if replicator is too slow
+            ok;
+        undefined ->
+            ok;
+        _ ->
+            Replicator ! {message, LastTS, {TS, Msg}}
+    end.
 
 
 
