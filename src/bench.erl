@@ -3,7 +3,7 @@
 -export([start/0, start/1, stats/0]).
 
 -define(OPTIONS, [
-    {clients, 10},
+    {clients, 1000},
     {channels, 10},
     {channels_per_client, {1, 2}},
     {pub_interval, 1000},
