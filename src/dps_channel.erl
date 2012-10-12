@@ -158,10 +158,10 @@ handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit 
             % gen_server:call(Replicator, {message, LastTS, {TS, Msg}});
             % for now we just skip messages, if replicator is too slow
             ok;
-        _ ->
-            Replicator ! {message, LastTS, {TS, Msg}};
         undefined ->
-            ok
+            ok;
+        _ ->
+            Replicator ! {message, LastTS, {TS, Msg}}
     end,
     {reply, ok, NewState};
 
