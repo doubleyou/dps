@@ -16,19 +16,19 @@ test:
 	./rebar eunit skip_deps=true
 
 1:
-	ulimit -n 10240
+	# ulimit -n 10240
 	ERL_MAX_PORTS=10240 erl -pa ebin -pa deps/*/ebin -s dps_example -sname node1
 
 2:
-	ulimit -n 10240
+	# ulimit -n 10240
 	ERL_MAX_PORTS=10240 erl -pa ebin -pa deps/*/ebin -s dps_example -sname node2
 
 3:
-	ulimit -n 10240
+	# ulimit -n 10240
 	ERL_MAX_PORTS=10240 erl -pa ebin -pa deps/*/ebin -s dps_example -sname node3
 
 4:
-	ulimit -n 10240
+	# ulimit -n 10240
 	ERL_MAX_PORTS=10240 erl -pa ebin -pa deps/*/ebin -s dps_example -sname node4
 
 aws: all

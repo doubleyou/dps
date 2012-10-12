@@ -156,7 +156,9 @@ handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit 
         true -> Messages1
     end,
     [{LastTS, _}|_] = Messages,
-    [Sub ! {dps_msg, Tag, LastTS, [Msg]} || {Sub, _Ref} <- Subscribers, Sub =/= Pid],
+
+    distribute_message({dps_msg, Tag, LastTS, [Msg]}, Subscribers, Pid),
+
     NewState = State#state{messages = Messages, last_ts = LastTS},
     case erlang:process_info(Replicator, message_queue_len) of
         {message_queue_len, QueueLen} when QueueLen > Limit ->
@@ -198,6 +200,14 @@ handle_call(_Msg, _From, State) ->
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
+
+distribute_message(Message, Subscribers, Pid) ->
+    [Sub ! Message || {Sub, _Ref} <- Subscribers, Sub =/= Pid].
+
+
+
+
 
 
 handle_info(replicate_from_peers, State = #state{tag = Tag}) ->
