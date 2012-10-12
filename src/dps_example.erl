@@ -9,12 +9,10 @@
 start() ->
     {ok, Nodes} = file:consult("priv/nodes.cfg"),
     {ok, Host} = inet:gethostname(),
-    [net_adm:ping(list_to_atom(atom_to_list(Node) ++ "@" ++ Host)) || {Node, _} <- Nodes],
+    [net_adm:ping(Node) || {Node, _} <- Nodes],
     application:start(dps),
 
-    OurNode = list_to_atom(hd(string:tokens(atom_to_list(node()), "@"))),
-
-    {OurNode, Port} = lists:keyfind(OurNode, 1, Nodes),
+    {_, Port} = lists:keyfind(node(), 1, Nodes),
 
     dps:new(example_channel1),
     dps:new(example_channel2),
