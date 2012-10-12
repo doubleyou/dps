@@ -27,6 +27,9 @@ test:
 4:
 	erl -pa ebin -pa deps/*/ebin -s dps_example -sname node4
 
+aws: all
+	./aws.sh
+
 
 bench:
 	./rebar compile skip_deps=true
