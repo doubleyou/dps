@@ -103,3 +103,40 @@ src/dps_channel.erl:67:<0.3291.0>: Error timeout in publish to channel_10007:
                          {unsubscribe,<0.2637.0>}},
 
 
+
+
+Дальше было решено проверить, сколько времени занимает unsubscribe. Время варьируется от 2 мкс до 3000 (!)
+
+src/dps_channel.erl:181:<0.5012.0>: unsubscribe took 12
+src/dps_channel.erl:181:<0.4997.0>: unsubscribe took 3075
+src/dps_channel.erl:181:<0.4411.0>: unsubscribe took 10
+src/dps_channel.erl:181:<0.4823.0>: unsubscribe took 22
+src/dps_channel.erl:181:<0.5006.0>: unsubscribe took 72
+src/dps_channel.erl:181:<0.5009.0>: unsubscribe took 108
+src/dps_channel.erl:181:<0.5003.0>: unsubscribe took 25
+src/dps_channel.erl:181:<0.4994.0>: unsubscribe took 16
+
+
+
+
+
+
+Было принято решение сделать механизм под названием subscribe_once и unsubscribe_once, который позволял бы
+автоматически отписывать потребителя от канала после получения первой пачки сообщений.
+
+Результат проработал дольше (коммит 5782336):
+
+(node2@squeeze64)1> bench:start().
+ok
+279 publish, 12612 receive
+279 publish, 9186 receive
+279 publish, 4811 receive
+711 publish, 54734 receive
+711 publish, 38409 receive
+550 publish, 43456 receive
+575 publish, 45967 receive
+633 publish, 45217 receive
+604 publish, 41727 receive
+740 publish, 35102 receive
+732 publish, 116532 receive
+523 publish, 49317 receive
