@@ -27,6 +27,7 @@
          prepend_sorted/2,
          messages_newer/2,
 
+         dumper/1,
          messages_limit/0,
          replicate_messages/3,
          replicate/5,
@@ -146,10 +147,39 @@ start_link(Tag) ->
 -spec init(Tag :: dps:tag()) -> {ok, #state{}}.
 init(Tag) ->
     self() ! replicate_from_peers,
+    put(publish_count,0),
+    put(publish_time,0),
+    put(subscribe_count,0),
+    put(subscribe_time,0),
+    put(unsubscribe_count,0),
+    put(unsubscribe_time,0),
+    put(tag,Tag),
+    % FIXME: this is enabling debug output for channel
+    % Self = self(),
+    % spawn(fun() -> dumper(Self) end),
     {ok, #state{tag = Tag, limit = ?MODULE:messages_limit()}}.
+
+dumper(Pid) ->
+    {dictionary,Dict} = process_info(Pid,dictionary),
+    Tag = proplists:get_value(tag,Dict),
+    SubCount = proplists:get_value(subscribe_count,Dict),
+    SubTime = proplists:get_value(subscribe_time,Dict),
+
+    UnsubCount = proplists:get_value(unsubscribe_count,Dict),
+    UnsubTime = proplists:get_value(unsubscribe_time,Dict),
+    PubCount = proplists:get_value(publish_count,Dict),
+    PubTime = proplists:get_value(publish_time,Dict),
+    if PubCount > 0 ->
+    io:format("Chan ~s: publish ~B/~B, subscribe ~B/~B, unsubscribe: ~B/~B~n", [Tag, 
+        PubCount,PubTime,SubCount,SubTime, UnsubCount,UnsubTime]);
+    true -> ok end,
+    timer:sleep(1000),
+    dumper(Pid).
+
 
 handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit = Limit,
                             replicator = Replicator, subscribers = Subscribers, tag = Tag}) ->
+    T1 = erlang:now(),
     Messages1 = prepend_sorted({TS,Msg}, Msgs),
     Messages = if
         length(Messages1) >= Limit*2 -> lists:sublist(Messages1, Limit);
@@ -158,11 +188,15 @@ handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit 
     [{LastTS, _}|_] = Messages,
     distribute_message({dps_msg, Tag, LastTS, [Msg]}, Subscribers, Pid),
 
-    ?MODULE:replicate(Replicator, LastTS, TS, Msg, Limit),
+    % ?MODULE:replicate(Replicator, LastTS, TS, Msg, Limit),
+    T2 = erlang:now(),
+    put(publish_count,get(publish_count)+1),
+    put(publish_time,get(publish_time)+timer:now_diff(T2,T1)),
     {reply, ok, State#state{messages = Messages, last_ts = LastTS}};
 
 handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag = Tag,
                                                 subscribers = Subscribers, last_ts = LastTS}) ->
+    T1 = erlang:now(),
     Ref = erlang:monitor(process, Pid),
     Msgs = messages_newer(Messages, TS),
     case Msgs of
@@ -170,12 +204,20 @@ handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag
         _ -> Pid ! {dps_msg, Tag, LastTS, Msgs}
     end,
     NewState = State#state{subscribers = [{Pid,Ref} | Subscribers]},
+    T2 = erlang:now(),
+    put(subscribe_count,get(subscribe_count)+1),
+    put(subscribe_time,get(subscribe_time)+timer:now_diff(T2,T1)),
     {reply, length(Msgs), NewState};
 
 handle_call({unsubscribe, Pid}, _From, State = #state{subscribers = Subscribers}) ->
+    T1 = erlang:now(),
     {Delete, Remain} = lists:partition(fun({P,_Ref}) -> P == Pid end, Subscribers),
     [erlang:demonitor(Ref) || {_Pid,Ref} <- Delete],
-    {reply, ok, State#state{subscribers = Remain}};
+    NewState = State#state{subscribers = Remain},
+    T2 = erlang:now(),
+    put(unsubscribe_count,get(unsubscribe_count)+1),
+    put(unsubscribe_time,get(unsubscribe_time)+timer:now_diff(T2,T1)),
+    {reply, ok, NewState};
 
 handle_call({messages, TS}, _From, State = #state{last_ts = LastTS, messages = AllMessages}) ->
     Messages = messages_newer(AllMessages, TS),
