@@ -17,10 +17,8 @@
 -export([publish/2,
          messages/2,
          unsubscribe/1,
-         unsubscribe_once/1,
          subscribe/1,
          subscribe/2,
-         subscribe_once/2,
          multi_fetch/2,
          multi_fetch/3,
          find/1,
@@ -37,7 +35,6 @@
 
 -record(state, {
     subscribers = []    :: list(),
-    once_subscribers = []::list(),
     messages = []       :: list(),
     last_ts = 0         :: non_neg_integer(),
     limit               :: non_neg_integer(),
@@ -94,19 +91,10 @@ subscribe(Tag, TS) ->
     gen_server:call(find(Tag), {subscribe, self(), TS}).
 
 
--spec subscribe_once(Tag :: dps:tag(), TS :: dps:timestamp()) ->
-                                                    Msgs :: non_neg_integer().
-subscribe_once(Tag, TS) ->
-    gen_server:call(find(Tag), {subscribe_once, self(), TS}).
-
-
 -spec unsubscribe(Tag :: term()) -> ok.
 unsubscribe(Tag) ->
     gen_server:call(find(Tag), {unsubscribe, self()}).
 
--spec unsubscribe_once(Tag :: term()) -> ok.
-unsubscribe_once(Tag) ->
-    gen_server:call(find(Tag), {unsubscribe_once, self()}).
 
 -spec find(Tag :: term()) -> Pid :: pid().
 find(Pid) when is_pid(Pid) ->
@@ -127,16 +115,16 @@ multi_fetch(Tags, TS) ->
         Timeout :: non_neg_integer()) ->
             {ok, LastTS :: dps:timestamp(), [Message :: term()]}.
 multi_fetch(Tags, TS, Timeout) ->
-    [subscribe_once(Tag, TS) || Tag <- Tags],
+    [subscribe(Tag, TS) || Tag <- Tags],
     % FIXME: this is a temporary debug sleep to make replies less CPU intensive
     % timer:sleep(500),
     receive
         {dps_msg, _Tag, LastTS, Messages} ->
-            [unsubscribe_once(Tag) || Tag <- Tags],
+            [unsubscribe(Tag) || Tag <- Tags],
             receive_multi_fetch_results(LastTS, Messages)
     after
         Timeout ->
-            [unsubscribe_once(Tag) || Tag <- Tags],
+            [unsubscribe(Tag) || Tag <- Tags],
             receive_multi_fetch_results(TS, [])
     end.
 
@@ -170,7 +158,7 @@ handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit 
     [{LastTS, _}|_] = Messages,
     distribute_message({dps_msg, Tag, LastTS, [Msg]}, Subscribers, Pid),
 
-    % ?MODULE:replicate(Replicator, LastTS, TS, Msg, Limit),
+    ?MODULE:replicate(Replicator, LastTS, TS, Msg, Limit),
     {reply, ok, State#state{messages = Messages, last_ts = LastTS}};
 
 handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag = Tag,
@@ -181,30 +169,13 @@ handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag
         [] -> ok;
         _ -> Pid ! {dps_msg, Tag, LastTS, Msgs}
     end,
-    NewState = State#state{subscribers = lists:keystore(Pid, 1, Subscribers, {Pid,Ref})},
+    NewState = State#state{subscribers = [{Pid,Ref} | Subscribers]},
     {reply, length(Msgs), NewState};
-
-handle_call({subscribe_once, Pid, TS}, _From, State = #state{messages = Messages, tag = Tag,
-                                            once_subscribers = Subscribers, last_ts = LastTS}) ->
-    Msgs = messages_newer(Messages, TS),
-    case Msgs of
-        [] -> 
-            Ref = erlang:monitor(process, Pid),
-            NewState = State#state{subscribers = lists:keystore(Pid, 1, Subscribers, {Pid,Ref})},
-            {reply, 0, NewState};
-        _ -> 
-            Pid ! {dps_msg, Tag, LastTS, Msgs},
-            {reply, length(Msgs), State}
-    end;
 
 handle_call({unsubscribe, Pid}, _From, State = #state{subscribers = Subscribers}) ->
     {Delete, Remain} = lists:partition(fun({P,_Ref}) -> P == Pid end, Subscribers),
     [erlang:demonitor(Ref) || {_Pid,Ref} <- Delete],
     {reply, ok, State#state{subscribers = Remain}};
-
-handle_call({unsubscribe_once, Pid}, _From, State = #state{once_subscribers = Subscribers}) ->
-    Remain = lists:keydelete(Pid,1,Subscribers),
-    {reply, ok, State#state{once_subscribers = Remain}};
 
 handle_call({messages, TS}, _From, State = #state{last_ts = LastTS, messages = AllMessages}) ->
     Messages = messages_newer(AllMessages, TS),
@@ -220,7 +191,6 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 distribute_message(Message, Subscribers, Pid) ->
-    % ?debugFmt("Distribute message to ~B subscribers", [length(Subscribers)]),
     [Sub ! Message || {Sub, _Ref} <- Subscribers, Sub =/= Pid].
 
 
@@ -250,10 +220,8 @@ handle_info({give_me_messages, Pid}, State = #state{last_ts = LastTS, messages =
 handle_info({replication_messages, LastTS1, Msgs}, State = #state{}) ->
     {noreply, replication_messages(LastTS1, Msgs, State)};
 
-handle_info({'DOWN', _Ref, _, Pid, _}, State = #state{subscribers=Subscribers,
-        once_subscribers = OnceSubscribers}) ->
-    {noreply, State#state{subscribers = lists:keydelete(Pid,1,Subscribers), 
-        once_subscribers = lists:keydelete(Pid,1,OnceSubscribers)}};
+handle_info({'DOWN', Ref, _, Pid, _}, State = #state{subscribers=Subscribers}) ->
+    {noreply, State#state{subscribers = Subscribers -- [{Pid,Ref}]}};
 handle_info(_Info, State) ->
     {noreply, State}.
 
