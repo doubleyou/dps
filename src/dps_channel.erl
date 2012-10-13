@@ -148,7 +148,6 @@ start_link(Tag) ->
 init(Tag) ->
     self() ! replicate_from_peers,
     put(publish_count,0),
-    put(publish_count_real,0),
     put(publish_time,0),
     put(subscribe_count,0),
     put(subscribe_time,0),
@@ -156,8 +155,8 @@ init(Tag) ->
     put(unsubscribe_time,0),
     put(tag,Tag),
     % FIXME: this is enabling debug output for channel
-    Self = self(),
-    spawn(fun() -> dumper(Self) end),
+    % Self = self(),
+    % spawn(fun() -> dumper(Self) end),
     {ok, #state{tag = Tag, limit = ?MODULE:messages_limit()}}.
 
 dumper(Pid) ->
@@ -169,31 +168,29 @@ dumper(Pid) ->
     UnsubCount = proplists:get_value(unsubscribe_count,Dict),
     UnsubTime = proplists:get_value(unsubscribe_time,Dict),
     PubCount = proplists:get_value(publish_count,Dict),
-    PubRealCount = proplists:get_value(publish_count_real,Dict),
     PubTime = proplists:get_value(publish_time,Dict),
     if PubCount > 0 ->
-    io:format("Chan ~s: publish ~B/~B/~B, subscribe ~B/~B, unsubscribe: ~B/~B~n", [Tag, 
-        PubCount,PubRealCount,PubTime,SubCount,SubTime, UnsubCount,UnsubTime]);
+    io:format("Chan ~s: publish ~B/~B, subscribe ~B/~B, unsubscribe: ~B/~B~n", [Tag, 
+        PubCount,PubTime,SubCount,SubTime, UnsubCount,UnsubTime]);
     true -> ok end,
-    timer:sleep(2000),
+    timer:sleep(1000),
     dumper(Pid).
 
 
 handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit = Limit,
                             replicator = Replicator, subscribers = Subscribers, tag = Tag}) ->
     T1 = erlang:now(),
-    {Deliver, Messages1} = fetch_all_publish_calls(prepend_sorted({TS,Msg}, Msgs), [Msg]),
+    Messages1 = prepend_sorted({TS,Msg}, Msgs),
     Messages = if
         length(Messages1) >= Limit*2 -> lists:sublist(Messages1, Limit);
         true -> Messages1
     end,
     [{LastTS, _}|_] = Messages,
-    distribute_message({dps_msg, Tag, LastTS, Deliver}, Subscribers, Pid),
+    distribute_message({dps_msg, Tag, LastTS, [Msg]}, Subscribers, Pid),
 
     % ?MODULE:replicate(Replicator, LastTS, TS, Msg, Limit),
     T2 = erlang:now(),
     put(publish_count,get(publish_count)+1),
-    put(publish_count_real,get(publish_count_real)+length(Deliver)),
     put(publish_time,get(publish_time)+timer:now_diff(T2,T1)),
     {reply, ok, State#state{messages = Messages, last_ts = LastTS}};
 
@@ -279,17 +276,6 @@ terminate(_Reason, _State) ->
 %%
 %% Internal functions
 %%
-
-
-fetch_all_publish_calls(Messages, Deliver) ->
-    receive
-        {'$gen_call', From, {publish,Msg,TS}} ->
-            gen_server:reply(From, ok),
-            fetch_all_publish_calls(prepend_sorted({TS,Msg},Messages), [Msg|Deliver])
-    after
-        0 ->
-            {lists:reverse(Deliver), Messages}
-    end.
 
 
 replication_messages(_, [], State) ->
