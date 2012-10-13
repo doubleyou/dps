@@ -54,6 +54,13 @@ messages_limit() ->
 -spec publish(Tag :: dps:tag(), Msg :: dps:message()) -> TS :: dps:timestamp().
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
+    % FIXME: this is a debug output to notify busy channels
+    % case process_info(find(Tag), messages) of
+    %     {messages, Messages} when length(Messages) > 20 ->
+    %         ?debugFmt("Warning! Channel ~s is overloaded. Delay publish: ~p", [Tag, Messages]),
+    %         timer:sleep(500);
+    %     _ -> ok
+    % end,
     try gen_server:call(find(Tag), {publish, Msg, TS},500)
     catch
       exit:{timeout,_} = Error ->
@@ -109,6 +116,8 @@ multi_fetch(Tags, TS) ->
             {ok, LastTS :: dps:timestamp(), [Message :: term()]}.
 multi_fetch(Tags, TS, Timeout) ->
     [subscribe(Tag, TS) || Tag <- Tags],
+    % FIXME: this is a temporary debug sleep to make replies less CPU intensive
+    % timer:sleep(500),
     receive
         {dps_msg, _Tag, LastTS, Messages} ->
             [unsubscribe(Tag) || Tag <- Tags],

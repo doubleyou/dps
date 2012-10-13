@@ -74,3 +74,32 @@ ok
 
 
 
+Дальше переписана и push-часть бенчмарка на cowboy_client. Результаты ещё более обескураживающие:
+
+(node2@squeeze64)1> bench:start().
+ok
+521 publish, 8135 receive
+327 publish, 21364 receive
+** exception error: {invalid_push_response,500,
+
+Т.е. это означает, что за 10 секунд на 800 паблишей породилось 30 000 рассылок и эта ситуация заблокировала каналы, потому что
+в консоли веб-сервера пишется такое:
+
+src/dps_channel.erl:67:<0.3291.0>: Error timeout in publish to channel_10007:
+[{current_function,{dps_channel,'-distribute_message/3-lc$^0/1-0-',3}},
+ {initial_call,{proc_lib,init_p,5}},
+ {status,runnable},
+ {message_queue_len,113},
+ {messages,[{'$gen_call',{<0.2800.0>,#Ref<0.0.0.22845>},
+                         {publish,<<"y u no love node.js?">>,
+                                  1350151002349255}},
+            {'$gen_call',{<0.3782.0>,#Ref<0.0.0.22879>},
+                         {unsubscribe,<0.3782.0>}},
+            {'$gen_call',{<0.2315.0>,#Ref<0.0.0.22880>},
+                         {unsubscribe,<0.2315.0>}},
+            {'$gen_call',{<0.2314.0>,#Ref<0.0.0.22881>},
+                         {unsubscribe,<0.2314.0>}},
+            {'$gen_call',{<0.2637.0>,#Ref<0.0.0.22892>},
+                         {unsubscribe,<0.2637.0>}},
+
+

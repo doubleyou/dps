@@ -17,8 +17,6 @@
 -record(state, {
     channels,
     client,
-    push_packets,
-    poll_packet,
     host,
     ts = 0,
     publish_interval,
@@ -66,7 +64,7 @@ stats_collector() ->
     [{messages, MessageCount}] = ets:lookup(stats, messages),
     [{start_at, StartAt}] = ets:lookup(stats, start_at),
     _Delta = timer:now_diff(erlang:now(), StartAt) div 1000,
-    io:format("~B publish/msec, ~B receive/msec~n", [PublishCount, MessageCount]),
+    io:format("~B publish, ~B receive~n", [PublishCount, MessageCount]),
     ets:insert(stats, {publishes, 0}),
     ets:insert(stats, {messages, 0}),
     ets:insert(stats, {start_at, erlang:now()}),
@@ -86,34 +84,28 @@ client(Channels, {MinChannels, MaxChannels}, Host, Interval, _TimeOffset) ->
 client_init(Channels, Interval, Host) ->
     State = #state{
         channels = Channels,
-        push_packets = push_packets(Channels),
         host = Host,
         publish_interval = Interval
     },
     proc_lib:spawn_link(fun() ->
-        publisher_connect(State)
+        start_push(State)
     end),
     start_poll(State).
 
-publisher_connect(State) ->
-    {ok, S} = gen_tcp:connect(State#state.host, ?PORT, [{active, false}]),
-    publisher_loop(State#state{sock = S}).
 
-publisher_loop(State = #state{publish_interval = Interval}) ->
+start_push(#state{channels = Channels, host = Host, publish_interval = Interval}) ->
+    {ok, C} = cowboy_client:init([]),
+    URL = iolist_to_binary(io_lib:format("http://~s:~B/push", [Host, ?PORT])),
+    push(C, URL, [list_to_binary(Chan) || Chan <- Channels], Interval).
+
+push(C1, URL, [Chan|Channels], Interval) ->
+    {ok,C2} = cowboy_client:request(<<"POST">>, URL, [], <<Chan/binary, "|y u no love node.js?">>, C1),
+    {ok, Code, _Headers, C3} = cowboy_client:response(C2),
+    Code == 200 orelse throw({invalid_push_response,Code,_Headers, C3}),
+    {done, C4} = cowboy_client:skip_body(C3),
+    ets:update_counter(stats, publishes, 1),
     timer:sleep(Interval),
-    push(State, State#state.push_packets).
-
-push(State, []) ->
-    publisher_loop(State);
-push(State = #state{sock = S}, [Packet | Rest]) ->
-    case gen_tcp:send(S, Packet) of
-        ok ->
-            ets:update_counter(stats, publishes, 1),
-            push(State, Rest);
-        {error, _} ->
-            {ok, NewSock} = gen_tcp:connect(State#state.host, ?PORT, [binary, {packet, raw}, {active, false}]),
-            push(State#state{sock=NewSock}, [Packet | Rest])
-    end.
+    push(C4, URL, Channels ++ [Chan], Interval).
 
 
 start_poll(#state{channels = Channels, host = Host}) ->
@@ -138,10 +130,4 @@ poll(C1, URL, LastTS) ->
     poll(C4, URL, TS).
 
 
-
-
-push_packets(Channels) ->
-    [iolist_to_binary([<<"POST /push HTTP/1.1\r\nHost: localhost:9201\r\nAccept: application/json\r\nContent-type: application/json\r\nConnection: keepalive\r\nContent-Length:34\r\n\r\n">>, Channel, <<"|y u no love node.js?">>])
-%%    [[<<"POST /push HTTP/1.1\r\nUser-Agent: curl/7.19.6 (i386-apple-darwin10.5.0) libcurl/7.19.6 OpenSSL/0.9.8r zlib/1.2.5\r\nHost: localhost:9201\r\nAccept: application/json\r\nContent-Length: 34\r\n\r\n">>, Channel, <<"|y u no love node.js?">>]
-        || Channel <- Channels].
 
