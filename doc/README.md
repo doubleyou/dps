@@ -53,3 +53,24 @@ publish. Коммит 562a06e9a9e
 выполняя, таким образом, симуляцию load balancer'а.
 
 5. Настройки для одного large instance: [{clients, 1000}, {channels, 10}, {channelns_per_client, {1, 2}}, {pub_interval, 1000}]
+
+
+
+Бенчмарк меряет каждую секунду сколько было записано сообщений и прочитано. На коммит f3ac3114a состояние такое:
+
+(node2@squeeze64)2> bench:start().
+ok
+0 publish/msec, 0 receive/msec
+1140 publish/msec, 4373 receive/msec
+1140 publish/msec, 0 receive/msec
+1140 publish/msec, 0 receive/msec
+1477 publish/msec, 0 receive/msec
+1477 publish/msec, 0 receive/msec
+1477 publish/msec, 0 receive/msec
+1468 publish/msec, 0 receive/msec
+
+
+Т.е. видимо что-то залипает и перестает публиковаться.
+
+
+
