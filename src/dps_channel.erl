@@ -28,7 +28,6 @@
          messages_newer/2,
 
          messages_limit/0,
-         publish_local/3,
          replicate_messages/3,
          msgs_from_peers/2]).
 
@@ -60,17 +59,8 @@ publish(Tag, Msg) ->
         error_logger:error_msg("Error timeout in publish to ~s:~n~p~n", [Tag, process_info(find(Tag))]),
         erlang:raise(exit, Error, erlang:get_stacktrace())
     end,
-    % rpc:multicall(nodes(), ?MODULE, publish_local, [Tag, Msg, TS]),
     TS.
 
-
--spec publish_local(Tag :: dps:tag(), Msg :: dps:message(), TS :: dps:timestamp()) -> ok.
-publish_local(_Tag, _Msg, _TS) ->
-    % try gen_server:call(find(Tag), {publish, Msg, TS})
-    % catch
-        % throw:{no_channel, Tag} -> no_channel
-    % end.
-    ok.
 
 replicate_messages(Pid, LastTS, Msgs) ->
     gen_server:call(Pid, {replication_messages, LastTS, Msgs}).
@@ -176,9 +166,9 @@ handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag
                                                 subscribers = Subscribers, last_ts = LastTS}) ->
     Ref = erlang:monitor(process, Pid),
     Msgs = messages_newer(Messages, TS),
-    if
-        length(Msgs) > 0 -> Pid ! {dps_msg, Tag, LastTS, Msgs};
-        true -> ok
+    case Msgs of
+        [] -> ok;
+        _ -> Pid ! {dps_msg, Tag, LastTS, Msgs};
     end,
     NewState = State#state{subscribers = [{Pid,Ref} | Subscribers]},
     {reply, length(Msgs), NewState};
@@ -201,14 +191,8 @@ handle_call(_Msg, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-
 distribute_message(Message, Subscribers, Pid) ->
     [Sub ! Message || {Sub, _Ref} <- Subscribers, Sub =/= Pid].
-
-
-
-
-
 
 handle_info(replicate_from_peers, State = #state{tag = Tag}) ->
     {ok, Replicator} = dps_sup:channel_replicator(Tag),
@@ -284,7 +268,6 @@ prepend_sorted({TS1,Msg1}, [{TS2,Msg2}|Messages]) when TS1 < TS2 ->
     [{TS2,Msg2}|prepend_sorted({TS1,Msg1}, Messages)].
 
 
-
 messages_newer(Messages, TS) ->
     messages_newer(Messages, TS, []).
 
@@ -293,12 +276,4 @@ messages_newer([{TS1,Msg1}|Messages], TS, Acc) when TS1 > TS ->
 
 messages_newer(_Messages, _TS, Acc) ->
     Acc.
-
-
-
-
-
-
-
-
 
