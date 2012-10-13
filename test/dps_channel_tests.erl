@@ -14,6 +14,15 @@ dps_channel_test_() ->
     [{atom_to_list(F), fun ?MODULE:F/0} || F <- TestFunctions]
   }.
 
+dps_channel1_test_() ->
+  TestFunctions = [F || {F,0} <- ?MODULE:module_info(exports),
+                            lists:prefix("test1_", atom_to_list(F))],
+  {foreach,
+    fun setup1/0,
+    fun teardown1/1,
+    [{atom_to_list(F), fun ?MODULE:F/0} || F <- TestFunctions]
+  }.
+
 
 setup() ->
   Modules = [dps_channel_sup, dps_channel, dps_util],
@@ -25,6 +34,18 @@ setup() ->
 
 teardown({Modules}) ->
   meck:unload(Modules),
+  application:stop(dps),
+  ok.
+
+
+
+setup1() ->
+  gen_event:delete_handler(error_logger, error_logger_tty_h, []),
+  application:start(dps),
+  ok.
+
+
+teardown1(ok) ->
   application:stop(dps),
   ok.
 
@@ -88,22 +109,16 @@ test_channel_refetch_new_messages() ->
 
 
 
-test_channel_messages_limit() ->
-  meck:expect(dps_channel, replicate, fun(_,_,_,_) -> ok end),
-  meck:expect(dps_channel, messages_limit, fun() -> 1000 end),
+test1_channel_messages_limit() ->
   dps_channels_manager:create(test_channel),
   TotalLimit = dps_channel:messages_limit(),
 
-  T1 = erlang:now(),
   LastTS1 = lists:foldl(fun(I, PrevTS) ->
     TS = dps_channel:publish(test_channel, {message, I}),
     ?assertMatch(_ when TS > PrevTS, {TS,PrevTS}),
     TS
   end, 0, lists:seq(1, TotalLimit)),
   ?assertMatch({ok, _, Msg} when length(Msg) == TotalLimit, dps_channel:messages(test_channel, 0)),
-
-  T2 = erlang:now(),
-  ?debugFmt("delta21: ~p", [timer:now_diff(T2,T1) div 1000]),
 
   _LastTS2 = lists:foldl(fun(I, PrevTS) ->
     TS = try dps_channel:publish(test_channel, {message, I})
@@ -113,9 +128,6 @@ test_channel_messages_limit() ->
     ?assertMatch(_ when TS > PrevTS, {TS,PrevTS}),
     TS
   end, LastTS1, lists:seq(TotalLimit+1, TotalLimit*5)),
-
-  T3 = erlang:now(),
-  ?debugFmt("delta32: ~p", [timer:now_diff(T3,T2) div 1000]),
 
   {ok, _, Messages} = dps_channel:messages(test_channel, 0),
   ?assertMatch(Len when Len < TotalLimit*2, length(Messages)),
@@ -128,8 +140,6 @@ test_channel_messages_limit() ->
   end,
   ?assertMatch(Num when Num > TotalLimit, lists:min(Numbers)),
 
-  T4 = erlang:now(),
-  ?debugFmt("delta43: ~p", [timer:now_diff(T4,T3) div 1000]),
   ok.
 
 
