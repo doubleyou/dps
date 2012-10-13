@@ -14,6 +14,15 @@ dps_channel_test_() ->
     [{atom_to_list(F), fun ?MODULE:F/0} || F <- TestFunctions]
   }.
 
+dps_channel1_test_() ->
+  TestFunctions = [F || {F,0} <- ?MODULE:module_info(exports),
+                            lists:prefix("test1_", atom_to_list(F))],
+  {foreach,
+    fun setup1/0,
+    fun teardown1/1,
+    [{atom_to_list(F), fun ?MODULE:F/0} || F <- TestFunctions]
+  }.
+
 
 setup() ->
   Modules = [dps_channel_sup, dps_channel, dps_util],
@@ -25,6 +34,18 @@ setup() ->
 
 teardown({Modules}) ->
   meck:unload(Modules),
+  application:stop(dps),
+  ok.
+
+
+
+setup1() ->
+  gen_event:delete_handler(error_logger, error_logger_tty_h, []),
+  application:start(dps),
+  ok.
+
+
+teardown1(ok) ->
   application:stop(dps),
   ok.
 
@@ -88,7 +109,7 @@ test_channel_refetch_new_messages() ->
 
 
 
-test_channel_messages_limit() ->
+test1_channel_messages_limit() ->
   dps_channels_manager:create(test_channel),
   TotalLimit = dps_channel:messages_limit(),
 
@@ -100,10 +121,13 @@ test_channel_messages_limit() ->
   ?assertMatch({ok, _, Msg} when length(Msg) == TotalLimit, dps_channel:messages(test_channel, 0)),
 
   _LastTS2 = lists:foldl(fun(I, PrevTS) ->
-    TS = dps_channel:publish(test_channel, {message, I}),
+    TS = try dps_channel:publish(test_channel, {message, I})
+    catch
+      Class:Error -> erlang:raise(Class, {publish,test_channel,I,Error}, erlang:get_stacktrace())
+    end,
     ?assertMatch(_ when TS > PrevTS, {TS,PrevTS}),
     TS
-  end, LastTS1, lists:seq(TotalLimit+1, TotalLimit*3)),
+  end, LastTS1, lists:seq(TotalLimit+1, TotalLimit*5)),
 
   {ok, _, Messages} = dps_channel:messages(test_channel, 0),
   ?assertMatch(Len when Len < TotalLimit*2, length(Messages)),
@@ -115,6 +139,7 @@ test_channel_messages_limit() ->
     _ -> ok
   end,
   ?assertMatch(Num when Num > TotalLimit, lists:min(Numbers)),
+
   ok.
 
 
