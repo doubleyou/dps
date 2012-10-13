@@ -152,22 +152,14 @@ init(Tag) ->
 handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit = Limit,
                             replicator = Replicator, subscribers = Subscribers, tag = Tag}) ->
     Messages1 = prepend_sorted({TS,Msg}, Msgs),
-    T1 = erlang:now(),
     Messages = if
         length(Messages1) >= Limit*2 -> lists:sublist(Messages1, Limit);
         true -> Messages1
     end,
     [{LastTS, _}|_] = Messages,
-    T2 = erlang:now(),
     distribute_message({dps_msg, Tag, LastTS, [Msg]}, Subscribers, Pid),
-    T3 = erlang:now(),
 
-    Delta1 = timer:now_diff(T2,T1) div 1000,
-    Delta2 = timer:now_diff(T3,T1) div 1000,
-    if Delta1 > 0 -> ?debugFmt("delta1 = ~p", [Delta1]); true -> ok end,
-    if Delta2 > 0 -> ?debugFmt("delta2 = ~p", [Delta2]); true -> ok end,
-
-    % ?MODULE:replicate(Replicator, LastTS, TS, Msg, Limit),
+    ?MODULE:replicate(Replicator, LastTS, TS, Msg, Limit),
     {reply, ok, State#state{messages = Messages, last_ts = LastTS}};
 
 handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag = Tag,
