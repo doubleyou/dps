@@ -106,10 +106,13 @@ test_channel_messages_limit() ->
   ?debugFmt("delta21: ~p", [timer:now_diff(T2,T1) div 1000]),
 
   _LastTS2 = lists:foldl(fun(I, PrevTS) ->
-    TS = dps_channel:publish(test_channel, {message, I}),
+    TS = try dps_channel:publish(test_channel, {message, I})
+    catch
+      Class:Error -> erlang:raise(Class, {publish,test_channel,I,Error}, erlang:get_stacktrace())
+    end,
     ?assertMatch(_ when TS > PrevTS, {TS,PrevTS}),
     TS
-  end, LastTS1, lists:seq(TotalLimit+1, TotalLimit*3)),
+  end, LastTS1, lists:seq(TotalLimit+1, TotalLimit*5)),
 
   T3 = erlang:now(),
   ?debugFmt("delta32: ~p", [timer:now_diff(T3,T2) div 1000]),
