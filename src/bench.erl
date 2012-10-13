@@ -1,5 +1,6 @@
 -module(bench).
 
+-compile(export_all).
 -export([start/0, start/1, stats/0]).
 
 -define(OPTIONS, [
@@ -40,6 +41,9 @@ start(Opts) ->
     ets:new(stats, [public, named_table, set]),
     ets:insert(stats, {publishes, 0}),
     ets:insert(stats, {messages, 0}),
+    ets:insert(stats, {start_at, erlang:now()}),
+
+    proc_lib:spawn_link(fun stats_collector/0),
 
     [proc_lib:spawn_link(fun() ->
             client(Channels, ChPC, lists:nth(I rem HL + 1, Hosts), PubInterval, round(PubInterval * I / Clients))
@@ -50,6 +54,21 @@ start(Opts) ->
 
 make_channel(I) ->
     lists:concat(["channel_", 10000 + I]).
+
+
+stats_collector() ->
+    timer:sleep(1000),
+    [{publishes, PublishCount}] = ets:lookup(stats, publishes),
+    [{messages, MessageCount}] = ets:lookup(stats, messages),
+    [{start_at, StartAt}] = ets:lookup(stats, start_at),
+    Delta = timer:now_diff(erlang:now(), StartAt) div 1000,
+    io:format("~B publish/msec, ~B receive/msec~n", [PublishCount, MessageCount]),
+    ets:insert(stats, {publishes, 0}),
+    ets:insert(stats, {messages, 0}),
+    ets:insert(stats, {start_at, erlang:now()}),
+    stats_collector().
+
+
 
 client(Channels, {MinChannels, MaxChannels}, Host, Interval, _TimeOffset) ->
     random:seed(now()),
@@ -102,30 +121,34 @@ poll(State = #state{poll_packet = {Pref, Suff}, ts = TS, sock = S}) ->
     gen_tcp:send(S, P),
     case gen_tcp:recv(S, 0, 5000) of
         {ok, {http_response, _, 200, _ }} ->
-            poll_headers(State, S, -1);
+            poll_headers(State, -1);
         {error, _Error} ->
+            gen_tcp:close(S),
             client_connect(State);
         _ ->
+            gen_tcp:close(S),
             client_connect(State)
     end.
 
-poll_headers(State, S, ContentLength) ->
+poll_headers(#state{sock = S} = State, ContentLength) ->
     case gen_tcp:recv(S, 0, 5000) of
         {ok, {http_header, _, 'Content-Length', _, L}} ->
-            poll_headers(State, S, list_to_integer(L));
+            poll_headers(State, list_to_integer(L));
         {ok, {http_header, _, _, _, _}} ->
-            poll_headers(State, S, ContentLength);
+            poll_headers(State, ContentLength);
         {ok, http_eoh} ->
             inet:setopts(S, [binary, {packet, raw}, {active, false}]),
-            case gen_tcp:recv(S, 10000) of
+            case gen_tcp:recv(S, ContentLength) of
                 {ok, B} ->
-                    ets:update_counter(stats, messages, size(B) div 36);
+                    ets:update_counter(stats, messages, size(B) div 36),
+                    poll(State);
                 _ ->
-                    ok
-            end,
-            poll(State);
+                    gen_tcp:close(S),
+                    poll(State#state{sock = undefined})
+            end;
         {error, _Error} ->
-            client_connect(State);
+            gen_tcp:close(S),
+            client_connect(State#state{sock = undefined});
         V ->
             exit(V)
     end.

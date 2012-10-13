@@ -158,7 +158,7 @@ handle_call({subscribe, Pid, TS}, _From, State = #state{messages = Messages, tag
     Msgs = messages_newer(Messages, TS),
     case Msgs of
         [] -> ok;
-        _ -> Pid ! {dps_msg, Tag, LastTS, Msgs};
+        _ -> Pid ! {dps_msg, Tag, LastTS, Msgs}
     end,
     NewState = State#state{subscribers = [{Pid,Ref} | Subscribers]},
     {reply, length(Msgs), NewState};
