@@ -1,6 +1,5 @@
 -module(bench).
 
--compile(export_all).
 -export([start/0, start/1, stats/0]).
 
 -define(OPTIONS, [
@@ -10,9 +9,14 @@
     {pub_interval, 1000},
     {hosts, ["localhost"]}
 ]).
+
 -define(PORT, 9201).
+-define(AVG_SIZE, 36).
+
 
 -record(state, {
+    channels,
+    client,
     push_packets,
     poll_packet,
     host,
@@ -61,7 +65,7 @@ stats_collector() ->
     [{publishes, PublishCount}] = ets:lookup(stats, publishes),
     [{messages, MessageCount}] = ets:lookup(stats, messages),
     [{start_at, StartAt}] = ets:lookup(stats, start_at),
-    Delta = timer:now_diff(erlang:now(), StartAt) div 1000,
+    _Delta = timer:now_diff(erlang:now(), StartAt) div 1000,
     io:format("~B publish/msec, ~B receive/msec~n", [PublishCount, MessageCount]),
     ets:insert(stats, {publishes, 0}),
     ets:insert(stats, {messages, 0}),
@@ -81,15 +85,15 @@ client(Channels, {MinChannels, MaxChannels}, Host, Interval, _TimeOffset) ->
 
 client_init(Channels, Interval, Host) ->
     State = #state{
+        channels = Channels,
         push_packets = push_packets(Channels),
-        poll_packet = poll_packet(Channels),
         host = Host,
         publish_interval = Interval
     },
     proc_lib:spawn_link(fun() ->
         publisher_connect(State)
     end),
-    client_connect(State).
+    start_poll(State).
 
 publisher_connect(State) ->
     {ok, S} = gen_tcp:connect(State#state.host, ?PORT, [{active, false}]),
@@ -98,10 +102,6 @@ publisher_connect(State) ->
 publisher_loop(State = #state{publish_interval = Interval}) ->
     timer:sleep(Interval),
     push(State, State#state.push_packets).
-
-client_connect(State) ->
-    {ok, S} = gen_tcp:connect(State#state.host, ?PORT, [{active, false}]),
-    poll(State#state{sock = S}).
 
 push(State, []) ->
     publisher_loop(State);
@@ -115,48 +115,33 @@ push(State = #state{sock = S}, [Packet | Rest]) ->
             push(State#state{sock=NewSock}, [Packet | Rest])
     end.
 
-poll(State = #state{poll_packet = {Pref, Suff}, ts = TS, sock = S}) ->
-    inet:setopts(S, [{packet, http}, {active, false}]),
-    P = [Pref, integer_to_list(TS), Suff],
-    gen_tcp:send(S, P),
-    case gen_tcp:recv(S, 0, 5000) of
-        {ok, {http_response, _, 200, _ }} ->
-            poll_headers(State, -1);
-        {error, _Error} ->
-            gen_tcp:close(S),
-            client_connect(State);
-        _ ->
-            gen_tcp:close(S),
-            client_connect(State)
-    end.
 
-poll_headers(#state{sock = S} = State, ContentLength) ->
-    case gen_tcp:recv(S, 0, 5000) of
-        {ok, {http_header, _, 'Content-Length', _, L}} ->
-            poll_headers(State, list_to_integer(L));
-        {ok, {http_header, _, _, _, _}} ->
-            poll_headers(State, ContentLength);
-        {ok, http_eoh} ->
-            inet:setopts(S, [binary, {packet, raw}, {active, false}]),
-            case gen_tcp:recv(S, ContentLength) of
-                {ok, B} ->
-                    ets:update_counter(stats, messages, size(B) div 36),
-                    poll(State);
-                _ ->
-                    gen_tcp:close(S),
-                    poll(State#state{sock = undefined})
-            end;
-        {error, _Error} ->
-            gen_tcp:close(S),
-            client_connect(State#state{sock = undefined});
-        V ->
-            exit(V)
-    end.
+start_poll(#state{channels = Channels, host = Host}) ->
+    {ok, C} = cowboy_client:init([]),
+    URL = iolist_to_binary(io_lib:format("http://~s:~B/poll?channels=~s&ts=", [Host, ?PORT, string:join(Channels, ",")])),
+    poll(C, URL, 0).
+
+poll(C1, URL, LastTS) ->
+    T = list_to_binary(integer_to_list(LastTS)),
+    {ok, C2} = cowboy_client:request(<<"GET">>, <<URL/binary, T/binary>>, C1),
+    {ok, Code, _Headers, C3} = cowboy_client:response(C2),
+    Code == 200 orelse throw({invalid_comet_reply,Code,_Headers,C3}),
+    {ok, Body, C4} = cowboy_client:response_body(C3),
+    TS = case binary:split(Body, <<",">>) of
+        [T1, Body1] ->
+            ets:update_counter(stats, messages, size(Body1) div ?AVG_SIZE),
+            cowboy_http:digits(T1);
+        [T1] ->
+            cowboy_http:digits(T1)
+    end,
+    timer:sleep(50),
+    poll(C4, URL, TS).
+
+
+
 
 push_packets(Channels) ->
     [iolist_to_binary([<<"POST /push HTTP/1.1\r\nHost: localhost:9201\r\nAccept: application/json\r\nContent-type: application/json\r\nConnection: keepalive\r\nContent-Length:34\r\n\r\n">>, Channel, <<"|y u no love node.js?">>])
 %%    [[<<"POST /push HTTP/1.1\r\nUser-Agent: curl/7.19.6 (i386-apple-darwin10.5.0) libcurl/7.19.6 OpenSSL/0.9.8r zlib/1.2.5\r\nHost: localhost:9201\r\nAccept: application/json\r\nContent-Length: 34\r\n\r\n">>, Channel, <<"|y u no love node.js?">>]
         || Channel <- Channels].
 
-poll_packet(Channels) ->
-    {iolist_to_binary([<<"GET /poll?channels=">>, string:join(Channels, ","), <<"&ts=">>]), <<" HTTP/1.1\r\nHost: localhost\r\nConnection: keepalive\r\n\r\n">>}.
