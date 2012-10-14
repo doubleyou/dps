@@ -17,7 +17,10 @@ test:
 
 1:
 	# ulimit -n 10240
-	ERL_MAX_PORTS=10240 erl -pa ebin -pa deps/*/ebin -s dps_example -sname node1
+	ERL_MAX_PORTS=10240 erl -pa ebin -pa deps/*/ebin -s dps_example -sname node1 -smp enable
+
+1b:
+	ERL_MAX_PORTS=10240 erl -pa ebin -pa deps/*/ebin erl -sname bench1 -smp enable
 
 2:
 	# ulimit -n 10240

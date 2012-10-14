@@ -4,17 +4,18 @@
 -compile(export_all).
 
 -define(OPTIONS, [
-    {clients, 1000},
+    {clients, 2000},
     {channels, 40},
     {channels_per_client, {1, 4}},
-    {pub_interval, 1000},
+    {pub_interval, 400},
     {hosts, ["localhost"]}
 ]).
 
 
+% OutRate = Clients*1000 / PubInterval
+
 % ClientCount * ((MaxChannel + MinChannel)/2) / PubInterval = Messages/MSec
 % MessagesPerChannelPerSec = ClientCount * ((MaxChannel + MinChannel)/2)*1000 / (Channels*PubInterval)
-% OutRate = Clients*1000 / PubInterval
 % InRate = MessagesPerChannelPerSec*Clients
 
 -define(PORT, 9201).
@@ -54,6 +55,7 @@ start(Opts) ->
     ets:insert(stats, {total_publishes, 0}),
     ets:insert(stats, {messages, 0}),
     ets:insert(stats, {total_messages, 0}),
+    ets:insert(stats, {timeouts, 0}),
     ets:insert(stats, {start_at, erlang:now()}),
 
     proc_lib:spawn_link(fun stats_collector/0),
@@ -69,12 +71,24 @@ start(Opts) ->
         end
     end) || I <- lists:seq(1, Clients)],
 
-    _Pollers = [proc_lib:spawn_link(fun() ->
-        timer:sleep(PubInterval*I div Clients),
-        PublishChannels = select_random(Channels, MinChannels, MaxChannels),
-        Host = lists:nth(I rem length(Hosts) + 1, Hosts),
-        start_poll(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
-    end) || I <- lists:seq(1, Clients div 40)],
+    % _Pollers = [proc_lib:spawn_link(fun() ->
+    %     timer:sleep(PubInterval*I div Clients),
+    %     PublishChannels = select_random(Channels, MinChannels, MaxChannels),
+    %     Host = lists:nth(I rem length(Hosts) + 1, Hosts),
+    %     start_poll(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
+    % end) || I <- lists:seq(1, Clients div 40)],
+    % Node = node1@squeeze64,
+    % pong = net_adm:ping(Node),
+    % [rpc:call(Node, dps, new, [list_to_binary(Chan)]) || Chan <- Channels],
+    % _Subscribers = [proc_lib:spawn_link(fun() ->
+    %     timer:sleep(PubInterval*I div Clients),
+    %     PollChannels = select_random(Channels, MinChannels, MaxChannels),
+    %     try start_subscribe([list_to_binary(Chan) || Chan <- PollChannels], Node)
+    %     catch
+    %         Class:Error ->
+    %             io:format("Problems in subscriber(~B): ~p:~p~n~p~n", [I,Class,Error, erlang:get_stacktrace()])
+    %     end
+    % end) || I <- lists:seq(1,Clients div 40)],
     ok.
 
 select_random(Channels,Min,Max) ->
@@ -108,6 +122,21 @@ stats_collector() ->
 
 
 
+start_subscribe(Channels, Node) ->
+    Pids = [rpc:call(Node, dps_channel, find, [Chan]) || Chan <- Channels],
+    [dps_channel:subscribe(Pid) || Pid <- Pids],
+    subscribe().
+
+subscribe() ->
+    receive
+        {dps_msg, _, _, Messages} ->
+            ets:update_counter(stats, messages, length(Messages)),
+            ets:update_counter(stats, total_messages, length(Messages)),
+            subscribe();
+        Else ->
+            io:format("Unknown message ~p in subscriber~n", [Else])
+    end.
+
 
 
 start_push(#state{channels = Channels, host = Host, publish_interval = Interval} = State) ->
@@ -115,6 +144,10 @@ start_push(#state{channels = Channels, host = Host, publish_interval = Interval}
     {ok, C} = cowboy_client:init([]),
     try push(C, URL, [list_to_binary(Chan) || Chan <- Channels], Interval)
     catch
+        error:{badmatch,{error,timeout}} ->
+            ets:update_counter(stats, timeouts, 1),
+            timer:sleep(500),
+            start_push(State);
         error:{badmatch,{error,closed}} ->
             start_push(State)
     end.

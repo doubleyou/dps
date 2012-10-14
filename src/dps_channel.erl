@@ -49,12 +49,14 @@
 
 -spec messages_limit() -> non_neg_integer().
 messages_limit() ->
-    100.
+    40.
 
 
 -spec publish(Tag :: dps:tag(), Msg :: dps:message()) -> TS :: dps:timestamp().
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
+    {_,Messages} = process_info(find(Tag),messages),
+    Len = length(Messages),
     % FIXME: this is a debug output to notify busy channels
     % case process_info(find(Tag), messages) of
     %     {messages, Messages} when length(Messages) > 20 ->
@@ -62,10 +64,10 @@ publish(Tag, Msg) ->
     %         timer:sleep(500);
     %     _ -> ok
     % end,
-    try gen_server:call(find(Tag), {publish, Msg, TS},500)
+    try gen_server:call(find(Tag), {publish, Msg, TS}, 3000)
     catch
       exit:{timeout,_} = Error ->
-        ?debugFmt("Error timeout in publish to ~s:~n~p~n", [Tag, process_info(find(Tag))]),
+        ?debugFmt("Error timeout in publish ~B to ~s with ~B messages ~p~n:~n~p~n", [TS, Tag, Len, Messages, process_info(find(Tag))]),
         erlang:raise(exit, Error, erlang:get_stacktrace())
     end,
     TS.
@@ -177,18 +179,19 @@ dumper(Pid) ->
     dumper(Pid).
 
 
-handle_call({publish, Msg, TS}, {Pid, _}, State = #state{messages = Msgs, limit = Limit,
+handle_call({publish, Msg, TS}, _From, State = #state{messages = Msgs, limit = Limit,
                             replicator = Replicator, subscribers = Subscribers, tag = Tag}) ->
     T1 = erlang:now(),
+    % gen_server:reply(From, ok),
     Messages1 = prepend_sorted({TS,Msg}, Msgs),
     Messages = if
         length(Messages1) >= Limit*2 -> lists:sublist(Messages1, Limit);
         true -> Messages1
     end,
     [{LastTS, _}|_] = Messages,
-    distribute_message({dps_msg, Tag, LastTS, [Msg]}, Subscribers, Pid),
+    distribute_message({dps_msg, Tag, LastTS, [Msg]}, Subscribers),
 
-    % ?MODULE:replicate(Replicator, LastTS, TS, Msg, Limit),
+    ?MODULE:replicate(Replicator, LastTS, TS, Msg, Limit),
     T2 = erlang:now(),
     put(publish_count,get(publish_count)+1),
     put(publish_time,get(publish_time)+timer:now_diff(T2,T1)),
@@ -232,8 +235,8 @@ handle_call(_Msg, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-distribute_message(Message, Subscribers, Pid) ->
-    [Sub ! Message || {Sub, _Ref} <- Subscribers, Sub =/= Pid].
+distribute_message(Message, Subscribers) ->
+    [Sub ! Message || {Sub, _Ref} <- Subscribers].
 
 
 replicate(Replicator, LastTS, TS, Msg, Limit) ->
