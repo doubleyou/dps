@@ -49,7 +49,7 @@
 
 -spec messages_limit() -> non_neg_integer().
 messages_limit() ->
-    1000.
+    100.
 
 
 -spec publish(Tag :: dps:tag(), Msg :: dps:message()) -> TS :: dps:timestamp().

@@ -31,14 +31,15 @@ stats() ->
 
 start(Opts) ->
     Options = Opts ++ ?OPTIONS,
+    inets:start(),
+
 
     Clients = proplists:get_value(clients, Options),
-    ChPC = proplists:get_value(channels_per_client, Options),
+    {MinChannels,MaxChannels} = proplists:get_value(channels_per_client, Options),
     Channels = [make_channel(I)
         || I <- lists:seq(1, proplists:get_value(channels, Options))],
     Hosts = proplists:get_value(hosts, Options),
     PubInterval = proplists:get_value(pub_interval, Options),
-    HL = length(Hosts),
 
     ets:new(stats, [public, named_table, set]),
     ets:insert(stats, {publishes, 0}),
@@ -47,12 +48,31 @@ start(Opts) ->
 
     proc_lib:spawn_link(fun stats_collector/0),
 
-    [proc_lib:spawn_link(fun() ->
-            client(Channels, ChPC, lists:nth(I rem HL + 1, Hosts), PubInterval, round(PubInterval * I / Clients))
-        end)
-        || I <- lists:seq(1, Clients)],
-    
+    _Publishers = [proc_lib:spawn_link(fun() ->
+        timer:sleep(PubInterval*I div Clients),
+        PublishChannels = select_random(Channels, MinChannels, MaxChannels),
+        Host = lists:nth(I rem length(Hosts) + 1, Hosts),
+        start_push(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
+    end) || I <- lists:seq(1, Clients)],
+
+    _Pollers = [proc_lib:spawn_link(fun() ->
+        timer:sleep(PubInterval*I div Clients),
+        PublishChannels = select_random(Channels, MinChannels, MaxChannels),
+        Host = lists:nth(I rem length(Hosts) + 1, Hosts),
+        start_poll(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
+    end) || I <- lists:seq(1, Clients div 40)],
     ok.
+
+select_random(Channels,Min,Max) ->
+    ChannelCount = crypto:rand_uniform(Min, Max+1),
+    select_random(Channels, ChannelCount).
+
+select_random(_Channels, 0) -> 
+    [];
+select_random(Channels, Count) ->
+    N = crypto:rand_uniform(1,length(Channels)+1),
+    Channels1 = lists:sublist(Channels,N-1) ++ lists:sublist(Channels,N+1,length(Channels)),
+    [lists:nth(N,Channels)|select_random(Channels1,Count-1)].
 
 make_channel(I) ->
     lists:concat(["channel_", 10000 + I]).
@@ -72,25 +92,6 @@ stats_collector() ->
 
 
 
-client(Channels, {MinChannels, MaxChannels}, Host, Interval, _TimeOffset) ->
-    random:seed(now()),
-    CL = length(Channels),
-    TotalChannels = random:uniform(MaxChannels - MinChannels + 1) + MinChannels - 1,
-    ClientChannels = [lists:nth(random:uniform(CL), Channels)
-        || _ <- lists:seq(1, TotalChannels)],
-
-    client_init(ClientChannels, Interval, Host).
-
-client_init(Channels, Interval, Host) ->
-    State = #state{
-        channels = Channels,
-        host = Host,
-        publish_interval = Interval
-    },
-    proc_lib:spawn_link(fun() ->
-        start_push(State)
-    end),
-    start_poll(State).
 
 
 start_push(#state{channels = Channels, host = Host, publish_interval = Interval}) ->
@@ -126,7 +127,7 @@ poll(C1, URL, LastTS) ->
         [T1] ->
             cowboy_http:digits(T1)
     end,
-    timer:sleep(50),
+    timer:sleep(3000 + random:uniform(3000)),
     poll(C4, URL, TS).
 
 
