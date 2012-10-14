@@ -1,6 +1,7 @@
 -module(bench).
 
 -export([start/0, start/1, stats/0]).
+-compile(export_all).
 
 -define(OPTIONS, [
     {clients, 1000},
@@ -24,7 +25,10 @@
 }).
 
 start() ->
-    start([]).
+    try start([])
+    catch
+        Class:Error -> io:format("bench:start failure: ~p:~p~n~p~n", [Class, Error, erlang:get_stacktrace()])
+    end.
 
 stats() ->
     ets:match(stats, '$1').
@@ -32,7 +36,8 @@ stats() ->
 start(Opts) ->
     Options = Opts ++ ?OPTIONS,
     inets:start(),
-
+    inets:start(httpc, [{profile, push_httpc}]),
+    httpc:set_options([{max_sessions,10240},{max_keep_alive_length,1000}], push_httpc),
 
     Clients = proplists:get_value(clients, Options),
     {MinChannels,MaxChannels} = proplists:get_value(channels_per_client, Options),
@@ -52,15 +57,19 @@ start(Opts) ->
         timer:sleep(PubInterval*I div Clients),
         PublishChannels = select_random(Channels, MinChannels, MaxChannels),
         Host = lists:nth(I rem length(Hosts) + 1, Hosts),
-        start_push(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
+        try start_push(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
+        catch
+            Class:Error ->
+                io:format("Problems in pusher(~B): ~p:~p~n~p~n", [I,Class,Error, erlang:get_stacktrace()])
+        end
     end) || I <- lists:seq(1, Clients)],
 
-    _Pollers = [proc_lib:spawn_link(fun() ->
-        timer:sleep(PubInterval*I div Clients),
-        PublishChannels = select_random(Channels, MinChannels, MaxChannels),
-        Host = lists:nth(I rem length(Hosts) + 1, Hosts),
-        start_poll(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
-    end) || I <- lists:seq(1, Clients div 40)],
+    % _Pollers = [proc_lib:spawn_link(fun() ->
+    %     timer:sleep(PubInterval*I div Clients),
+    %     PublishChannels = select_random(Channels, MinChannels, MaxChannels),
+    %     Host = lists:nth(I rem length(Hosts) + 1, Hosts),
+    %     start_poll(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
+    % end) || I <- lists:seq(1, Clients div 40)],
     ok.
 
 select_random(Channels,Min,Max) ->
@@ -95,18 +104,14 @@ stats_collector() ->
 
 
 start_push(#state{channels = Channels, host = Host, publish_interval = Interval}) ->
-    {ok, C} = cowboy_client:init([]),
-    URL = iolist_to_binary(io_lib:format("http://~s:~B/push", [Host, ?PORT])),
-    push(C, URL, [list_to_binary(Chan) || Chan <- Channels], Interval).
+    URL = io_lib:format("http://~s:~B/push", [Host, ?PORT]),
+    push(URL, [Chan || Chan <- Channels], Interval).
 
-push(C1, URL, [Chan|Channels], Interval) ->
-    {ok,C2} = cowboy_client:request(<<"POST">>, URL, [], <<Chan/binary, "|y u no love node.js?">>, C1),
-    {ok, Code, _Headers, C3} = cowboy_client:response(C2),
-    Code == 200 orelse throw({invalid_push_response,Code,_Headers, C3}),
-    {done, C4} = cowboy_client:skip_body(C3),
+push(URL, [Chan|Channels], Interval) ->
+    httpc:request(post, {URL, [], "text/plain", Chan ++ "|y u no love node.js?"}, [{timeout, 3000}], [], push_httpc),
     ets:update_counter(stats, publishes, 1),
     timer:sleep(Interval),
-    push(C4, URL, Channels ++ [Chan], Interval).
+    push(URL, Channels ++ [Chan], Interval).
 
 
 start_poll(#state{channels = Channels, host = Host}) ->
