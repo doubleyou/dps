@@ -103,15 +103,25 @@ stats_collector() ->
 
 
 
-start_push(#state{channels = Channels, host = Host, publish_interval = Interval}) ->
-    URL = io_lib:format("http://~s:~B/push", [Host, ?PORT]),
-    push(URL, [Chan || Chan <- Channels], Interval).
+start_push(#state{channels = Channels, host = Host, publish_interval = Interval} = State) ->
+    URL = iolist_to_binary(io_lib:format("http://~s:~B/push", [Host, ?PORT])),
+    {ok, C} = cowboy_client:init([]),
+    try push(C, URL, [list_to_binary(Chan) || Chan <- Channels], Interval)
+    catch
+        error:{badmatch,{error,closed}} ->
+            start_push(State)
+    end.
 
-push(URL, [Chan|Channels], Interval) ->
-    httpc:request(post, {URL, [], "text/plain", Chan ++ "|y u no love node.js?"}, [{timeout, 3000}], [], push_httpc),
+push(C1, URL, [Chan|Channels], Interval) ->
+    {ok,C2} = cowboy_client:request(<<"POST">>, URL, [], <<Chan/binary, "|y u no love node.js?">>, C1),
+    {ok, Code, _Headers, C3} = cowboy_client:response(C2),
+    Code == 200 orelse throw({invalid_push_response,Code,_Headers, C3}),
+    {done, C4} = cowboy_client:skip_body(C3),
+
+    % httpc:request(post, {URL, [], "text/plain", Chan ++ "|y u no love node.js?"}, [{timeout, 3000}], [], push_httpc),
     ets:update_counter(stats, publishes, 1),
     timer:sleep(Interval),
-    push(URL, Channels ++ [Chan], Interval).
+    push(C4, URL, Channels ++ [Chan], Interval).
 
 
 start_poll(#state{channels = Channels, host = Host}) ->

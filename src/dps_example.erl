@@ -47,8 +47,8 @@ start_everything(Port) ->
     ],
 
 
-    cowboy:start_http(dps_http_listener, 1000, [{port, Port}],
-      [{dispatch, Dispatch}]
+    cowboy:start_http(dps_http_listener, 100, [{port, Port},{max_connections,65536}],
+      [{dispatch, Dispatch},{max_keepalive,4096}]
     ).
 
 
