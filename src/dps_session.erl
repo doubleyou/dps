@@ -14,19 +14,26 @@
 
 -record(state, {
     session,
+    timer,
     channels = [],
-    messages = []
+    messages = [],
+    waiters = []
 }).
+
+-define(TIMEOUT, 30000).
 
 %%
 %% External API
 %%
 
-add_channels(Session, Channels) ->
-    gen_server:call(dps_sessions_manager:find(Session), {add_channels, Channels}).
+add_channels(Session, Channels) when is_pid(Session) ->
+    gen_server:call(Session, {add_channels, Channels}).
 
-fetch(Session) ->
-    gen_server:call(dps_sessions_manager:find(Session), fetch).
+fetch(Session) when is_pid(Session) ->
+    try gen_server:call(Session, fetch, 30000)
+    catch
+        exit:{timeout,_} -> []
+    end.
 
 start_link(Session) ->
     gen_server:start_link(?MODULE, Session, []).
@@ -36,10 +43,20 @@ start_link(Session) ->
 %%
 
 init(Session) ->
-    {ok, #state{session = Session}}.
+    Timer = erlang:send_after(?TIMEOUT, self(), timeout),
+    {ok, #state{session = Session, timer = Timer}}.
 
-handle_call(fetch, _From, State = #state{messages = Messages}) ->
-    {reply, Messages, State#state{messages = []}};
+handle_call(fetch, From, State = #state{messages = [], timer = OldTimer, waiters = Waiters}) ->
+    erlang:cancel_timer(OldTimer),
+    Timer = erlang:send_after(?TIMEOUT, self(), timeout),
+    {noreply, State#state{waiters = [From|Waiters], timer = Timer}};
+
+
+handle_call(fetch, _From, State = #state{messages = Messages, timer = OldTimer}) ->
+    erlang:cancel_timer(OldTimer),
+    Timer = erlang:send_after(?TIMEOUT, self(), timeout),
+    {reply, Messages, State#state{messages = [], timer = Timer}};
+
 handle_call({add_channels, Channels}, _From, State = #state{
                                                     channels = OldChannels}) ->
     [dps:subscribe(Channel) || Channel <- Channels -- OldChannels],
@@ -51,9 +68,14 @@ handle_call(Msg, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({dps_msg, _Tag, _LastTS, NewMessages}, State = #state{
+handle_info({dps_msg, _Tag, _LastTS, NewMessages}, State = #state{waiters = [],
                                                     messages = Messages}) ->
     {noreply, State#state{messages = NewMessages ++ Messages}};
+handle_info({dps_msg, _Tag, _LastTS, NewMessages}, State = #state{waiters = Waiters, messages = []}) ->
+    [gen_server:reply(From, Msg) || From <- Waiters, Msg <- NewMessages],
+    {noreply, State};
+handle_info(timeout, State) ->
+    {stop, normal, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 

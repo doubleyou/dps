@@ -31,8 +31,7 @@ start_link() ->
 create(Session) ->
     case find(Session) of
         undefined ->
-            gen_server:call(?MODULE, {create, Session}),
-            find(Session);
+            gen_server:call(?MODULE, {create, Session});
         Pid ->
             Pid
     end.
@@ -69,7 +68,17 @@ handle_info(_Info, State) ->
 
 
 handle_call({create, Session}, _From, State) ->
-    Reply = inner_create(Session),
+    % secondary check inside singleton process is mandatory because
+    % we need to avoid race condition
+    Reply = case find(Session) of
+        undefined ->
+            {ok, Pid} = dps_sup:start_session(Session),
+            ets:insert(table(), {Session, Pid}),
+            erlang:monitor(process, Pid),
+            Pid;
+        Pid ->
+            Pid
+    end,
     {reply, Reply, State};
 
 handle_call(_Msg, _From, State) ->
@@ -84,18 +93,4 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, _State) ->
     ok.
-
-inner_create(Session) ->
-    % secondary check inside singleton process is mandatory because
-    % we need to avoid race condition
-    Reply = case find(Session) of
-        undefined ->
-            {ok, Pid} = dps_sup:start_session(Session),
-            ets:insert(dps_sessions_manager:table(), {Session, Pid}),
-            erlang:monitor(process, Pid),
-            Pid;
-        Pid ->
-            Pid
-    end,
-    Reply.
 

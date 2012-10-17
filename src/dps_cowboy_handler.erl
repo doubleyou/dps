@@ -28,22 +28,21 @@ json_headers() ->
   {<<"Access-Control-Allow-Headers">>, <<"Content-Type">>}].
 
 handle(Req, poll) ->
-  {TS, Req2} = cowboy_req:qs_val(<<"ts">>, Req),
-  {RawChannels, Req3} = cowboy_req:qs_val(<<"channels">>, Req2),
+  {RawChannels, Req2} = cowboy_req:qs_val(<<"channels">>, Req),
   Channels = [list_to_binary(L) || L <- string:tokens(binary_to_list(RawChannels), ",")],
-  LastTS = case TS of
-    undefined -> 0;
-    _ -> list_to_integer(binary_to_list(TS))
+
+  {SessionId, Req3} = cowboy_req:qs_val(<<"session">>, Req2),
+  Session = case dps_sessions_manager:find(SessionId) of
+    undefined ->
+      [dps:new(Channel) || Channel <- Channels],
+      Session_ = dps_sessions_manager:create(SessionId),
+      dps_session:add_channels(Session_, Channels),
+      Session_;
+    Session_ ->
+      Session_
   end,
-  [dps:new(Channel) || Channel <- Channels],
-  {ok, LastTS1, Messages} = dps:multi_fetch(Channels, LastTS, 1000),
-%%  JSON = mochijson2:encode({struct, [{ts, LastTS}, {messages, Messages}]}),
-%%  {ok, Req3} = cowboy_req:reply(200, json_headers(), JSON, Req2),
-  Reply = case length(Messages) of
-    0 -> [integer_to_list(LastTS1)];
-    _ -> [integer_to_list(LastTS1), ",", Messages]
-  end,
-  {ok, Req4} = cowboy_req:reply(200, [], Reply, Req3),
+  Messages = dps_session:fetch(Session),
+  {ok, Req4} = cowboy_req:reply(200, [], Messages, Req3),
   {ok, Req4, poll};
 
 

@@ -30,8 +30,8 @@ start_channel(Name) ->
 start_session(Name) ->
   SessionSpec = {Name, {dps_session, start_link, [Name]}, transient, 5000, worker, [dps_session]},
   case supervisor:start_child(dps_sessions_sup, SessionSpec) of
-    {ok, P} -> P;
-    {error, {already_started, P}} -> P
+    {ok, P} -> {ok, P};
+    {error, {already_started, P}} -> {ok, P}
   end.
 
 channel_replicator(Name) ->
