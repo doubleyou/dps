@@ -2,7 +2,10 @@
 -behaviour(supervisor).
 
 -export([start_link/0]).
--export([start_channel/1, channel_replicator/1, stop_channel/1]).
+-export([start_channel/1,
+         start_session/1,
+         channel_replicator/1,
+         stop_channel/1]).
 -export([init/1]).
 
 -define(CHILD(M, R), {M, {M, start_link, []}, permanent, 5000, R, [M]}).
@@ -23,6 +26,13 @@ start_channel(Name) ->
   end,
   {channel, Pid, _, _} = lists:keyfind(channel, 1, supervisor:which_children(Supervisor)),
   {ok, Pid}.
+
+start_session(Name) ->
+  SessionSpec = {Name, {dps_session, start_link, [Name]}, transient, 5000, worker, [dps_session]},
+  case supervisor:start_child(dps_sessions_sup, SessionSpec) of
+    {ok, P} -> P;
+    {error, {already_started, P}} -> P
+  end.
 
 channel_replicator(Name) ->
   case lists:keyfind(Name, 1, supervisor:which_children(dps_channels_sup)) of
@@ -49,16 +59,27 @@ init({channel, Name}) ->
     {channel, {dps_channel, start_link, [Name]}, permanent, 5000, worker, [dps_channel]}
   ]}};
 
+init([sessions]) ->
+  {ok, { {one_for_one, 5, 10}, []} };
+
 init([channels]) ->
   {ok, { {one_for_one, 5, 10}, []} };
 
 init([]) ->
     ChannelsSup = {dps_channels_sup, 
       {supervisor, start_link, [{local, dps_channels_sup}, ?MODULE, [channels]]},
-      permanent, infinity, supervisor, []
+      permanent, infinity, supervisor, dynamic
     },
     ChannelsMgr = {dps_channels_manager, 
       {dps_channels_manager, start_link, []},
       permanent, 5000, worker, [dps_channels_manager]
     },
-    {ok, { {one_for_one, 5, 10}, [ChannelsSup, ChannelsMgr]} }.
+    SessionsSup = {dps_sessions_sup, 
+      {supervisor, start_link, [{local, dps_sessions_sup}, ?MODULE, [sessions]]},
+      permanent, infinity, supervisor, dynamic
+    },
+    SessionsMgr = {dps_sessions_manager, 
+      {dps_sessions_manager, start_link, []},
+      permanent, 5000, worker, [dps_sessions_manager]
+    },
+    {ok, { {one_for_one, 5, 10}, [ChannelsSup, ChannelsMgr, SessionsSup, SessionsMgr]} }.

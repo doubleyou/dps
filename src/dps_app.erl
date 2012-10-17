@@ -8,9 +8,9 @@
 %%
 
 start(_StartType, _StartArgs) ->
-    {ok, Pid} = dps_sup:start_link(),
+    Ret = dps_sup:start_link(),
     dps_channels_manager:channels(),
-    {ok, Pid}.
+    Ret.
 
 stop(_State) ->
     ok.

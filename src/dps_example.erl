@@ -16,8 +16,8 @@ start() ->
 
     {OurNode, Port} = lists:keyfind(OurNode, 1, Nodes),
 
-    dps:new(example_channel1),
-    dps:new(example_channel2),
+%%    dps:new(example_channel1),
+%%    dps:new(example_channel2),
     start_everything(Port).
 
 start_everything() ->
