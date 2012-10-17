@@ -28,7 +28,8 @@
     host,
     ts = 0,
     publish_interval,
-    sock
+    sock,
+    session
 }).
 
 start() ->
@@ -62,7 +63,7 @@ start(Opts) ->
 
     _Publishers = [proc_lib:spawn_link(fun() ->
         timer:sleep(PubInterval*I div Clients),
-        PublishChannels = select_random(Channels, MinChannels, MaxChannels),
+        PublishChannels = ["main"|select_random(Channels, MinChannels, MaxChannels)],
         Host = lists:nth(I rem length(Hosts) + 1, Hosts),
         try start_push(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
         catch
@@ -71,12 +72,12 @@ start(Opts) ->
         end
     end) || I <- lists:seq(1, Clients)],
 
-    % _Pollers = [proc_lib:spawn_link(fun() ->
-    %     timer:sleep(PubInterval*I div Clients),
-    %     PublishChannels = select_random(Channels, MinChannels, MaxChannels),
-    %     Host = lists:nth(I rem length(Hosts) + 1, Hosts),
-    %     start_poll(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
-    % end) || I <- lists:seq(1, Clients div 40)],
+    _Pollers = [proc_lib:spawn_link(fun() ->
+        timer:sleep(PubInterval*I div Clients),
+        PublishChannels = ["main"|select_random(Channels, MinChannels, MaxChannels)],
+        Host = lists:nth(I rem length(Hosts) + 1, Hosts),
+        start_poll(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval, session = dps_uuid:gen()})
+    end) || I <- lists:seq(1, Clients div 40)],
     % Node = node1@squeeze64,
     % pong = net_adm:ping(Node),
     % [rpc:call(Node, dps, new, [list_to_binary(Chan)]) || Chan <- Channels],
@@ -165,32 +166,26 @@ push(C1, URL, [Chan|Channels], Interval) ->
     push(C4, URL, Channels ++ [Chan], Interval).
 
 
-start_poll(#state{channels = Channels, host = Host} = State) ->
+start_poll(#state{channels = Channels, host = Host, session = Session} = State) ->
     {ok, C} = cowboy_client:init([]),
-    URL = iolist_to_binary(io_lib:format("http://~s:~B/poll?channels=~s&ts=", [Host, ?PORT, string:join(Channels, ",")])),
-    try poll(C, URL, 0)
+    URL = iolist_to_binary(io_lib:format("http://~s:~B/poll?channels=~s&session=~s", 
+        [Host, ?PORT, string:join(Channels, ","),Session])),
+    try poll(C, URL)
     catch
         error:{badmatch,{error,closed}} ->
             start_poll(State)
     end.
 
 
-poll(C1, URL, LastTS) ->
-    T = list_to_binary(integer_to_list(LastTS)),
-    {ok, C2} = cowboy_client:request(<<"GET">>, <<URL/binary, T/binary>>, C1),
+poll(C1, URL) ->
+    {ok, C2} = cowboy_client:request(<<"GET">>, URL, C1),
     {ok, Code, _Headers, C3} = cowboy_client:response(C2),
     Code == 200 orelse throw({invalid_comet_reply,Code,_Headers,C3}),
     {ok, Body, C4} = cowboy_client:response_body(C3),
-    TS = case binary:split(Body, <<",">>) of
-        [T1, Body1] ->
-            ets:update_counter(stats, messages, size(Body1) div ?AVG_SIZE),
-            ets:update_counter(stats, total_messages, size(Body1) div ?AVG_SIZE),
-            cowboy_http:digits(T1);
-        [T1] ->
-            cowboy_http:digits(T1)
-    end,
+    ets:update_counter(stats, messages, size(Body) div ?AVG_SIZE),
+    ets:update_counter(stats, total_messages, size(Body) div ?AVG_SIZE),
     timer:sleep(100),
-    poll(C4, URL, TS).
+    poll(C4, URL).
 
 
 
