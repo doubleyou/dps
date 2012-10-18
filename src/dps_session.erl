@@ -10,11 +10,12 @@
          terminate/2]).
 
 -export([add_channels/2,
-         fetch/1]).
+         fetch/2]).
 
 -record(state, {
     session,
     timer,
+    seq = 0,
     channels = [],
     messages = [],
     waiters = []
@@ -29,8 +30,9 @@
 add_channels(Session, Channels) when is_pid(Session) ->
     gen_server:call(Session, {add_channels, Channels}).
 
-fetch(Session) when is_pid(Session) ->
-    try gen_server:call(Session, fetch, 30000)
+-spec fetch(Session::pid(), OldSeq::non_neg_integer()) -> {ok, Seq::non_neg_integer(), [Message::term()]}.
+fetch(Session, OldSeq) when is_pid(Session) ->
+    try gen_server:call(Session, {fetch, OldSeq}, 30000)
     catch
         exit:{timeout,_} -> []
     end.
@@ -52,10 +54,12 @@ handle_call(fetch, From, State = #state{messages = [], timer = OldTimer, waiters
     {noreply, State#state{waiters = [From|Waiters], timer = Timer}};
 
 
-handle_call(fetch, _From, State = #state{messages = Messages, timer = OldTimer}) ->
+handle_call({fetch, OldSeq}, _From, State = #state{messages = Messages, timer = OldTimer, seq = Seq}) 
+    when OldSeq < Seq ->
     erlang:cancel_timer(OldTimer),
     Timer = erlang:send_after(?TIMEOUT, self(), timeout),
-    {reply, Messages, State#state{messages = [], timer = Timer}};
+    NewMessages = leave_new(Seq - OldSeq, Messages),
+    {reply, {ok, Seq, lists:reverse(NewMessages)}, State#state{messages = NewMessages, timer = Timer}};
 
 handle_call({add_channels, Channels}, _From, State = #state{
                                                     channels = OldChannels}) ->
@@ -68,12 +72,12 @@ handle_call(Msg, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({dps_msg, _Tag, _LastTS, NewMessages}, State = #state{waiters = [],
+handle_info({dps_msg, _Tag, Message}, State = #state{waiters = [], seq = Seq,
                                                     messages = Messages}) ->
-    {noreply, State#state{messages = NewMessages ++ Messages}};
-handle_info({dps_msg, _Tag, _LastTS, NewMessages}, State = #state{waiters = Waiters, messages = []}) ->
-    [gen_server:reply(From, Msg) || From <- Waiters, Msg <- NewMessages],
-    {noreply, State};
+    {noreply, State#state{messages = [Message|Messages], seq = Seq + 1}};
+handle_info({dps_msg, _Tag, Message}, State = #state{waiters = Waiters, messages = [], seq = Seq}) ->
+    [gen_server:reply(From, {ok, Seq+1, Message}) || From <- Waiters],
+    {noreply, State#state{seq = Seq + 1}};
 handle_info(timeout, State) ->
     {stop, normal, State};
 handle_info(_Info, State) ->
@@ -84,3 +88,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 terminate(_Reason, _State) ->
     ok.
+
+leave_new(0, _) ->  [];
+leave_new(_, []) -> [];
+leave_new(Count, [Message|Messages]) -> [Message|leave_new(Count - 1, Messages)].
