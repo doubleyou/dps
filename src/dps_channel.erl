@@ -22,8 +22,7 @@
          channels_table/0,
          clients_table/0,
 
-         replication_messages/2,
-         dumper/1
+         replication_messages/2
          ]).
 
 
@@ -101,35 +100,8 @@ start_link(Tag) ->
 
 -spec init(Tag :: dps:tag()) -> {ok, #state{}}.
 init(Tag) ->
-    put(publish_count,0),
-    put(publish_time,0),
-    put(subscribe_count,0),
-    put(subscribe_time,0),
-    put(unsubscribe_count,0),
-    put(unsubscribe_time,0),
     put(tag,Tag),
-    % FIXME: this is enabling debug output for channel
-    % Self = self(),
-    % spawn(fun() -> dumper(Self) end),
     {ok, #state{tag = Tag}}.
-
-dumper(Pid) ->
-    {dictionary,Dict} = process_info(Pid,dictionary),
-    Tag = proplists:get_value(tag,Dict),
-    SubCount = proplists:get_value(subscribe_count,Dict),
-    SubTime = proplists:get_value(subscribe_time,Dict),
-
-    UnsubCount = proplists:get_value(unsubscribe_count,Dict),
-    UnsubTime = proplists:get_value(unsubscribe_time,Dict),
-    PubCount = proplists:get_value(publish_count,Dict),
-    PubTime = proplists:get_value(publish_time,Dict),
-    if PubCount > 0 ->
-    io:format("Chan ~s: publish ~B/~B, subscribe ~B/~B, unsubscribe: ~B/~B~n", [Tag, 
-        PubCount,PubTime,SubCount,SubTime, UnsubCount,UnsubTime]);
-    true -> ok end,
-    timer:sleep(1000),
-    dumper(Pid).
-
 
 handle_call({subscribe, Pid}, _From, State = #state{tag = Tag}) ->
     T1 = erlang:now(),

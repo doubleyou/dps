@@ -49,12 +49,12 @@ handle(Req, poll) ->
 
     Session = dps_session:find_or_create(SessionId, Channels),
     {ok, Seq, Messages} = dps_session:fetch(Session, OldSeq),
-    {ok, Req4} = cowboy_req:reply(200, [], ["{\"seq\":", integer_to_list(Seq), ",\"messages\":[", join(Messages), "]}\n"], Req3),
-    {ok, Req4, poll}
+    {ok, Req5} = cowboy_req:reply(200, [], ["{\"seq\":", integer_to_list(Seq), ",\"messages\":[", join(Messages), "]}\n"], Req4),
+    {ok, Req5, poll}
   catch
     throw:{error,Status} ->
-      {ok, Req5} = cowboy_req:reply(400, json_headers(), <<"{\"error\" : \"",(atom_to_binary(Status,latin1))/binary,"\"}\n">>, Req),
-      {ok, Req5, push}
+      {ok, Req6} = cowboy_req:reply(400, json_headers(), <<"{\"error\" : \"",(atom_to_binary(Status,latin1))/binary,"\"}\n">>, Req),
+      {ok, Req6, push}
   end;
 
 

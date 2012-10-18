@@ -55,7 +55,7 @@ add_channels(Session, Channels) when is_pid(Session) ->
 fetch(Session, OldSeq) when is_pid(Session) ->
     try gen_server:call(Session, {fetch, OldSeq}, 30000)
     catch
-        exit:{timeout,_} -> []
+        exit:{timeout,_} -> {ok, OldSeq, []}
     end.
 
 start_link(Session) ->
@@ -107,8 +107,12 @@ handle_info({dps_msg, _Tag, Message}, State = #state{waiters = Waiters, messages
         _ -> [Message|Messages]
     end,
     {noreply, State#state{seq = Seq + 1, messages = NewMessages}};
-handle_info(timeout, State) ->
+handle_info(timeout, #state{waiters = []} = State) ->
     {stop, normal, State};
+handle_info(timeout, #state{timer = OldTimer} = State) ->
+    erlang:cancel_timer(OldTimer),
+    Timer = erlang:send_after(?TIMEOUT, self(), timeout),
+    {noreply, State#state{timer = Timer}};
 handle_info(_Info, State) ->
     {noreply, State}.
 

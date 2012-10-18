@@ -4,8 +4,8 @@
 -compile(export_all).
 
 -define(OPTIONS, [
-    {clients, 2000},
-    {channels, 40},
+    {clients, 4000},
+    {channels, 30},
     {channels_per_client, {1, 4}},
     {pub_interval, 400},
     {hosts, ["localhost:9201"]}
@@ -61,7 +61,7 @@ start(Opts) ->
     proc_lib:spawn_link(fun stats_collector/0),
 
     _Publishers = [proc_lib:spawn_link(fun() ->
-        timer:sleep(PubInterval*I div Clients),
+        timer:sleep(I*2),
         PublishChannels = ["main"|select_random(Channels, MinChannels, MaxChannels)],
         Host = lists:nth(I rem length(Hosts) + 1, Hosts),
         try start_push(#state{channels = PublishChannels, host = Host, publish_interval = PubInterval})
@@ -148,6 +148,10 @@ start_push(#state{channels = Channels, host = Host, publish_interval = Interval}
             ets:update_counter(stats, timeouts, 1),
             timer:sleep(500),
             start_push(State);
+        error:{badmatch,{error,etimedout}} ->
+            ets:update_counter(stats, timeouts, 1),
+            timer:sleep(50),
+            start_push(State);
         error:{badmatch,{error,closed}} ->
             start_push(State);
         Class:Error ->
@@ -175,6 +179,10 @@ start_poll(#state{channels = Channels, host = Host, session = Session} = State) 
     catch
         error:{badmatch,{error,closed}} ->
             start_poll(State);
+        error:{badmatch,{error,etimedout}} ->
+            timer:sleep(200),
+            ets:update_counter(stats, timeouts, 1),
+            start_poll(State);
         throw:restart_poll ->
             start_poll(State);
         Class:Error ->
@@ -189,7 +197,7 @@ poll(C1, URL, OldSeq) ->
     case cowboy_client:response(C2) of
         {ok, 200, _Headers, C3} ->
             {ok, Body, C4} = cowboy_client:response_body(C3),
-            {[{seq,Seq},{messages,Messages}]} = jiffy:decode(Body),
+            {[{<<"seq">>,Seq},{<<"messages">>,Messages}]} = jiffy:decode(Body),
             ets:update_counter(stats, messages, length(Messages)),
             ets:update_counter(stats, total_messages, length(Messages)),
             timer:sleep(50),
