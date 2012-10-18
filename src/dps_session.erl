@@ -66,6 +66,12 @@ handle_call({fetch, OldSeq}, _From, State = #state{messages = Messages, timer = 
     NewMessages = leave_new(Seq - OldSeq, Messages),
     {reply, {ok, Seq, lists:reverse(NewMessages)}, State#state{messages = NewMessages, timer = Timer}};
 
+handle_call({fetch, NewSeq}, From, State = #state{timer = OldTimer, seq = Seq, waiters = Waiters}) 
+    when NewSeq >= Seq ->
+    erlang:cancel_timer(OldTimer),
+    Timer = erlang:send_after(?TIMEOUT, self(), timeout),
+    {noreply, State#state{timer = Timer, waiters = [From|Waiters]}};
+
 handle_call({add_channels, Channels}, _From, State = #state{
                                                     channels = OldChannels}) ->
     [dps:subscribe(Channel) || Channel <- Channels -- OldChannels],
@@ -78,7 +84,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({dps_msg, _Tag, Message}, State = #state{waiters = Waiters, messages = Messages, seq = Seq}) ->
-    [gen_server:reply(From, {ok, Seq+1, Message}) || From <- Waiters],
+    [gen_server:reply(From, {ok, Seq+1, [Message]}) || From <- Waiters],
     Limit = limit(),
     NewMessages = case length(Messages) of
         Len when Len >= 2*Limit -> element(1,lists:split(Limit,[Message|Messages]));

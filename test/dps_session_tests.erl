@@ -71,3 +71,19 @@ test_clean_messages(#env{sess = Session}) ->
   ?assertEqual(Count, Seq),
   ?assertMatch(Len when Len =< 2*Limit, length(Messages)),
   ok.
+
+
+
+test_blocking_api(#env{sess = Session}) ->
+  Ref = make_ref(),
+  Session ! {'$gen_call', {self(), Ref}, {fetch, 0}},
+  send(Session, [message1]),
+  receive
+    {Ref, Reply} -> ?assertMatch({ok, 1, [message1]}, Reply)
+  after 100 -> exit(block_timeout)
+  end.
+
+
+
+
+
