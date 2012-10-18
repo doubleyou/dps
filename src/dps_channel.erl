@@ -104,12 +104,8 @@ init(Tag) ->
     {ok, #state{tag = Tag}}.
 
 handle_call({subscribe, Pid}, _From, State = #state{tag = Tag}) ->
-    T1 = erlang:now(),
     erlang:monitor(process, Pid),
     ets:insert(dps_channel:clients_table(), {Tag, Pid}),
-    T2 = erlang:now(),
-    put(subscribe_count,get(subscribe_count)+1),
-    put(subscribe_time,get(subscribe_time)+timer:now_diff(T2,T1)),
     {reply, ok, State};
 
 % handle_call({unsubscribe, Pid}, _From, State = #state{subscribers = Subscribers}) ->
