@@ -38,10 +38,8 @@ handle(Req, poll) ->
       [dps:new(Channel) || Channel <- Channels],
       Session_ = dps_sessions_manager:create(SessionId),
       dps_session:add_channels(Session_, Channels),
-      io:format("Wow, channels: ~p~n", [Channels]),
       Session_;
     Session_ ->
-      io:format("Reuse channels: ~p~n", [Channels]),
       Session_
   end,
   Messages = dps_session:fetch(Session),

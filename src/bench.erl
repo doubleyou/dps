@@ -8,7 +8,7 @@
     {channels, 40},
     {channels_per_client, {1, 4}},
     {pub_interval, 400},
-    {hosts, ["localhost"]}
+    {hosts, ["localhost:9201"]}
 ]).
 
 
@@ -18,7 +18,6 @@
 % MessagesPerChannelPerSec = ClientCount * ((MaxChannel + MinChannel)/2)*1000 / (Channels*PubInterval)
 % InRate = MessagesPerChannelPerSec*Clients
 
--define(PORT, 9201).
 -define(AVG_SIZE, 36).
 
 
@@ -141,7 +140,7 @@ subscribe() ->
 
 
 start_push(#state{channels = Channels, host = Host, publish_interval = Interval} = State) ->
-    URL = iolist_to_binary(io_lib:format("http://~s:~B/push", [Host, ?PORT])),
+    URL = iolist_to_binary(io_lib:format("http://~s/push", [Host])),
     {ok, C} = cowboy_client:init([]),
     try push(C, URL, [list_to_binary(Chan) || Chan <- Channels], Interval)
     catch
@@ -170,8 +169,8 @@ push(C1, URL, [Chan|Channels], Interval) ->
 
 start_poll(#state{channels = Channels, host = Host, session = Session} = State) ->
     {ok, C} = cowboy_client:init([]),
-    URL = iolist_to_binary(io_lib:format("http://~s:~B/poll?channels=~s&session=~s", 
-        [Host, ?PORT, string:join(Channels, ","),Session])),
+    URL = iolist_to_binary(io_lib:format("http://~s/poll?channels=~s&session=~s", 
+        [Host, string:join(Channels, ","),Session])),
     try poll(C, URL)
     catch
         error:{badmatch,{error,closed}} ->
