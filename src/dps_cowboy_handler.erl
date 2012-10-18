@@ -40,12 +40,24 @@ handle(Req, poll) ->
 
 
 handle(Req, push) ->
-  {ok, Body, Req1} = cowboy_req:body(Req),
-  [Channel, Msg] = binary:split(Body, <<"|">>),
-  dps:new(Channel),
-  dps:publish(Channel, Msg),
-  {ok, Req2} = cowboy_req:reply(200, json_headers(), <<"true\n">>, Req1),
-  {ok, Req2, push}.
+  {ok, Msg, Req1} = cowboy_req:body(Req),
+  try jiffy:decode(Msg) of
+    _ ->
+      {Channel, Req2} = cowboy_req:qs_val(<<"channel">>, Req1),
+      is_binary(Channel) orelse throw({error,no_channel}),
+      dps:new(Channel),
+      dps:publish(Channel, Msg),
+      {ok, Req3} = cowboy_req:reply(200, json_headers(), <<"true\n">>, Req2),
+      {ok, Req3, push}
+  catch
+    throw:{error,{_,invalid_json}} ->
+      {ok, Req3} = cowboy_req:reply(400, json_headers(), <<"{\"error\" : \"invalid_json\"}\n">>, Req1),
+      {ok, Req3, push};
+    throw:{error,no_channel} ->
+      {ok, Req3} = cowboy_req:reply(400, json_headers(), <<"{\"error\" : \"no_channel\"}\n">>, Req1),
+      {ok, Req3, push}
+  end.
+
 
 terminate(_Req, _State) ->
   ok.
