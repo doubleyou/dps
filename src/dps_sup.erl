@@ -24,8 +24,8 @@ start_channel(Name) ->
     {ok, SupPid} -> {ok, SupPid};
     {error, {already_started, SupPid}} -> {ok, SupPid}
   end,
-  {channel, Pid, _, _} = lists:keyfind(channel, 1, supervisor:which_children(Supervisor)),
-  {ok, Pid}.
+  % {channel, Pid, _, _} = lists:keyfind(channel, 1, supervisor:which_children(Supervisor)),
+  {ok, Supervisor}.
 
 start_session(Name) ->
   SessionSpec = {Name, {dps_session, start_link, [Name]}, transient, 5000, worker, [dps_session]},

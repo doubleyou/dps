@@ -18,8 +18,7 @@
     find/1,
     create/1,
     create_local/1,
-    all/0,
-    table/0]).
+    all/0]).
 
 -export([channels/0]).
 
@@ -27,7 +26,12 @@
 %% External API
 %%
 
-table() -> dps_channels_manager.
+
+-record(chan, {
+    tag,
+    pid,
+    repl
+}).
 
 
 start_link() ->
@@ -39,8 +43,8 @@ create(Tag) ->
         undefined ->
             rpc:multicall(?MODULE, create_local, [Tag]),
             find(Tag);
-        Pid ->
-            Pid
+        Info ->
+            Info
     end.
 
 create_local(Tag) ->
@@ -48,13 +52,13 @@ create_local(Tag) ->
 
 
 all() ->
-    MS = ets:fun2ms(fun({Tag, _}) -> Tag end),
-    ets:select(table(), MS).
+    MS = ets:fun2ms(fun(#chan{tag = Tag}) -> Tag end),
+    ets:select(dps_channel:channels_table(), MS).
 
 
 find(Tag) ->
-    case ets:lookup(table(), Tag) of
-        [{Tag, Pid}] -> Pid;
+    case ets:lookup(dps_channel:channels_table(), Tag) of
+        [#chan{tag = Tag, pid = Pid, repl = Repl}] -> {Tag, Pid, Repl};
         [] -> undefined
     end.
 
@@ -69,7 +73,8 @@ channels() ->
 
 init(Args) ->
     % Recovery procedure
-    ets:new(dps_channels_manager:table(), [public, named_table, set]),
+    ets:new(dps_channel:channels_table(), [public, named_table, set, {keypos, #chan.tag}]),
+    ets:new(dps_channel:clients_table(), [public, named_table, bag]),
     self() ! load_from_siblings,    
     {ok, Args}.
 
@@ -81,8 +86,14 @@ handle_info(load_from_siblings, State) ->
     {noreply, State};
 
 handle_info({'DOWN', _, _, Pid, _}, State) ->
-    MS = ets:fun2ms(fun({_, Pid_}) -> Pid_ =:= Pid end),
-    ets:select_delete(dps_channels_manager:table(), MS),
+    MS = ets:fun2ms(fun(#chan{tag = Tag, pid = Pid_}) when Pid_ == Pid -> Tag end),
+    case ets:select(dps_channel:channels_table(), MS) of
+        [Name] ->
+            ets:delete(dps_channel:channels_table(), Name),
+            ets:delete(dps_channel:clients_table(), Name);
+        [] ->
+            ok
+    end,
     {noreply, State};
 
 handle_info(_Info, State) ->
@@ -115,8 +126,11 @@ inner_create(Tag) ->
     % we need to avoid race condition
     Reply = case find(Tag) of
         undefined ->
-            {ok, Pid} = dps_sup:start_channel(Tag),
-            ets:insert(dps_channels_manager:table(), {Tag, Pid}),
+            {ok, Sup} = dps_sup:start_channel(Tag),
+            {channel, Pid, _, _} = lists:keyfind(channel, 1, supervisor:which_children(Sup)),
+            {replicator, Repl, _, _} = lists:keyfind(replicator, 1, supervisor:which_children(Sup)),
+
+            ets:insert(dps_channel:channels_table(), #chan{tag = Tag, pid = Pid, repl = Repl}),
             erlang:monitor(process, Pid),
             Pid;
         Pid ->

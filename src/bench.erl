@@ -150,7 +150,9 @@ start_push(#state{channels = Channels, host = Host, publish_interval = Interval}
             timer:sleep(500),
             start_push(State);
         error:{badmatch,{error,closed}} ->
-            start_push(State)
+            start_push(State);
+        Class:Error ->
+            io:format("Push ~p:~p~n~p~n", [Class, Error, erlang:get_stacktrace()])
     end.
 
 push(C1, URL, [Chan|Channels], Interval) ->
@@ -173,19 +175,30 @@ start_poll(#state{channels = Channels, host = Host, session = Session} = State) 
     try poll(C, URL)
     catch
         error:{badmatch,{error,closed}} ->
-            start_poll(State)
+            start_poll(State);
+        throw:restart_poll ->
+            start_poll(State);
+        Class:Error ->
+            io:format("Poll ~p:~p~n~p~n", [Class, Error, erlang:get_stacktrace()])            
     end.
 
 
 poll(C1, URL) ->
     {ok, C2} = cowboy_client:request(<<"GET">>, URL, C1),
-    {ok, Code, _Headers, C3} = cowboy_client:response(C2),
-    Code == 200 orelse throw({invalid_comet_reply,Code,_Headers,C3}),
-    {ok, Body, C4} = cowboy_client:response_body(C3),
-    ets:update_counter(stats, messages, size(Body) div ?AVG_SIZE),
-    ets:update_counter(stats, total_messages, size(Body) div ?AVG_SIZE),
-    timer:sleep(100),
-    poll(C4, URL).
+    case cowboy_client:response(C2) of
+        {ok, 200, _Headers, C3} ->
+            {ok, Body, C4} = cowboy_client:response_body(C3),
+            ets:update_counter(stats, messages, size(Body) div ?AVG_SIZE),
+            ets:update_counter(stats, total_messages, size(Body) div ?AVG_SIZE),
+            timer:sleep(100),
+            poll(C4, URL);
+        {ok, Code, _Headers, _C3} ->
+            io:format("Invalid poll reply: ~p ~p~n", [Code, _Headers]),
+            timer:sleep(500),
+            throw(restart_poll);
+        {error, timeout} ->
+            throw(restart_poll)
+    end.
 
 
 

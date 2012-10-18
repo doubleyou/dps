@@ -31,14 +31,17 @@ handle(Req, poll) ->
   {RawChannels, Req2} = cowboy_req:qs_val(<<"channels">>, Req),
   Channels = [list_to_binary(L) || L <- string:tokens(binary_to_list(RawChannels), ",")],
 
+
   {SessionId, Req3} = cowboy_req:qs_val(<<"session">>, Req2),
   Session = case dps_sessions_manager:find(SessionId) of
     undefined ->
       [dps:new(Channel) || Channel <- Channels],
       Session_ = dps_sessions_manager:create(SessionId),
       dps_session:add_channels(Session_, Channels),
+      io:format("Wow, channels: ~p~n", [Channels]),
       Session_;
     Session_ ->
+      io:format("Reuse channels: ~p~n", [Channels]),
       Session_
   end,
   Messages = dps_session:fetch(Session),
@@ -47,21 +50,15 @@ handle(Req, poll) ->
 
 
 handle(Req, push) ->
-  {ok, Message, Req1} = cowboy_req:body(Req),
-  [Channel, Msg] = split_post(Message, <<>>),
+  {ok, Body, Req1} = cowboy_req:body(Req),
+  [Channel, Msg] = binary:split(Body, <<"|">>),
   dps:new(Channel),
-  TS = dps:publish(Channel, Msg),
-  JSON = mochijson2:encode({struct, [{ts, TS}]}),
-  {ok, Req2} = cowboy_req:reply(200, json_headers(), JSON, Req1),
+  dps:publish(Channel, Msg),
+  {ok, Req2} = cowboy_req:reply(200, json_headers(), <<"true\n">>, Req1),
   {ok, Req2, push}.
 
 terminate(_Req, _State) ->
   ok.
-
-split_post(<<"|",Rest/binary>>, Acc) ->
-    [Acc, Rest];
-split_post(<<C:8,Rest/binary>>, Acc) ->
-    split_post(Rest, <<Acc/binary,C:8>>).
 
 
 
