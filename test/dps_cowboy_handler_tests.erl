@@ -45,14 +45,17 @@ teardown(#env{}) ->
 
 test_push(#env{url = Url}) ->
   Session = dps_session:find_or_create(<<"sess1">>, [<<"chan1">>]),
-  ?assertMatch({ok, {{_,200,_},_,"true\n"}}, httpc:request(post, {Url ++ "push", [], "text/plain", "chan1|message1"}, [],[])),
-  ?assertEqual({ok, 1, [<<"message1">>]}, dps_session:fetch(Session, 0)),
+  ?assertMatch({ok, {{_,200,_},_,"true\n"}}, httpc:request(post, {Url ++ "push?channel=chan1", [], "text/plain", "{\"title\":\"message1\"}"}, [],[])),
+  ?assertEqual({ok, 1, [<<"{\"title\":\"message1\"}">>]}, dps_session:fetch(Session, 0)),
   ok.
 
 test_poll_after_push(#env{url = Url}) ->
-  Session = dps_session:find_or_create(<<"sess1">>, [<<"chan1">>]),
-  ?assertMatch({ok, {{_,200,_},_,"true\n"}}, httpc:request(post, {Url ++ "push", [], "text/plain", "chan1|message1"}, [],[])),
-  ?assertMatch({ok, {{_,200,_},_,"1|message1\n"}}, httpc:request(post, {Url ++ "poll?session=sess1&channels=chan1,main&seq=0", [], "text/plain", ""}, [],[])),
+  _Session = dps_session:find_or_create(<<"sess1">>, [<<"chan1">>]),
+  ?assertMatch({ok, {{_,200,_},_,"true\n"}}, httpc:request(post, {Url ++ "push?channel=chan1", [], "text/plain", "{\"title\":\"message1\"}"}, [],[])),
+  Result = httpc:request(post, {Url ++ "poll?session=sess1&channels=chan1,main&seq=0", [], "text/plain", ""}, [],[]),
+  ?assertMatch({ok, {{_,200,_},_,_}}, Result),
+  {ok, {_,_,Body}} = Result,
+  ?assertEqual("{\"seq\":1,\"messages\":[{\"title\":\"message1\"}]}\n", Body),
   ok.
 
 
