@@ -63,4 +63,11 @@ test_session_flush_old_messages(#env{sess = Session}) ->
 
 
 
-
+test_clean_messages(#env{sess = Session}) ->
+  Limit = dps_session:limit(),
+  Count = 4*Limit,
+  send(Session, lists:seq(1,Count)),
+  {ok, Seq, Messages} = dps_session:fetch(Session, 0),
+  ?assertEqual(Count, Seq),
+  ?assertMatch(Len when Len =< 2*Limit, length(Messages)),
+  ok.

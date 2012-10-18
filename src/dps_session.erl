@@ -10,6 +10,7 @@
          terminate/2]).
 
 -export([add_channels/2,
+        limit/0,
          fetch/2]).
 
 -record(state, {
@@ -26,6 +27,10 @@
 %%
 %% External API
 %%
+
+-spec limit() -> Limit::non_neg_integer().
+limit() -> 100.
+
 
 add_channels(Session, Channels) when is_pid(Session) ->
     gen_server:call(Session, {add_channels, Channels}).
@@ -72,12 +77,14 @@ handle_call(Msg, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({dps_msg, _Tag, Message}, State = #state{waiters = [], seq = Seq,
-                                                    messages = Messages}) ->
-    {noreply, State#state{messages = [Message|Messages], seq = Seq + 1}};
-handle_info({dps_msg, _Tag, Message}, State = #state{waiters = Waiters, messages = [], seq = Seq}) ->
+handle_info({dps_msg, _Tag, Message}, State = #state{waiters = Waiters, messages = Messages, seq = Seq}) ->
     [gen_server:reply(From, {ok, Seq+1, Message}) || From <- Waiters],
-    {noreply, State#state{seq = Seq + 1}};
+    Limit = limit(),
+    NewMessages = case length(Messages) of
+        Len when Len >= 2*Limit -> element(1,lists:split(Limit,[Message|Messages]));
+        _ -> [Message|Messages]
+    end,
+    {noreply, State#state{seq = Seq + 1, messages = NewMessages}};
 handle_info(timeout, State) ->
     {stop, normal, State};
 handle_info(_Info, State) ->
