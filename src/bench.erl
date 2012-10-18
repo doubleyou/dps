@@ -155,7 +155,7 @@ start_push(#state{channels = Channels, host = Host, publish_interval = Interval}
     end.
 
 push(C1, URL, [Chan|Channels], Interval) ->
-    {ok,C2} = cowboy_client:request(<<"POST">>, URL, [], <<Chan/binary, "|y u no love node.js?">>, C1),
+    {ok,C2} = cowboy_client:request(<<"POST">>, <<URL/binary, "?channel=", Chan/binary>>, [], <<"{\"text\":\"y u no love node.js?\"}">>, C1),
     {ok, Code, _Headers, C3} = cowboy_client:response(C2),
     Code == 200 orelse throw({invalid_push_response,Code,_Headers, C3}),
     {done, C4} = cowboy_client:skip_body(C3),
@@ -169,9 +169,9 @@ push(C1, URL, [Chan|Channels], Interval) ->
 
 start_poll(#state{channels = Channels, host = Host, session = Session} = State) ->
     {ok, C} = cowboy_client:init([]),
-    URL = iolist_to_binary(io_lib:format("http://~s/poll?channels=~s&session=~s", 
+    URL = iolist_to_binary(io_lib:format("http://~s/poll?channels=~s&session=~s&seq=", 
         [Host, string:join(Channels, ","),Session])),
-    try poll(C, URL)
+    try poll(C, URL, 0)
     catch
         error:{badmatch,{error,closed}} ->
             start_poll(State);
@@ -182,15 +182,18 @@ start_poll(#state{channels = Channels, host = Host, session = Session} = State) 
     end.
 
 
-poll(C1, URL) ->
-    {ok, C2} = cowboy_client:request(<<"GET">>, URL, C1),
+to_b(Int) when is_number(Int) -> list_to_binary(integer_to_list(Int)).
+
+poll(C1, URL, OldSeq) ->
+    {ok, C2} = cowboy_client:request(<<"POST">>, <<URL/binary, (to_b(OldSeq))/binary>>, C1),
     case cowboy_client:response(C2) of
         {ok, 200, _Headers, C3} ->
             {ok, Body, C4} = cowboy_client:response_body(C3),
-            ets:update_counter(stats, messages, size(Body) div ?AVG_SIZE),
-            ets:update_counter(stats, total_messages, size(Body) div ?AVG_SIZE),
-            timer:sleep(100),
-            poll(C4, URL);
+            {[{seq,Seq},{messages,Messages}]} = jiffy:decode(Body),
+            ets:update_counter(stats, messages, length(Messages)),
+            ets:update_counter(stats, total_messages, length(Messages)),
+            timer:sleep(50),
+            poll(C4, URL, Seq);
         {ok, Code, _Headers, _C3} ->
             io:format("Invalid poll reply: ~p ~p~n", [Code, _Headers]),
             timer:sleep(500),
