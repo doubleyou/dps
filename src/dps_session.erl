@@ -10,6 +10,7 @@
          terminate/2]).
 
 -export([add_channels/2,
+        find_or_create/2,
         limit/0,
          fetch/2]).
 
@@ -30,6 +31,21 @@
 
 -spec limit() -> Limit::non_neg_integer().
 limit() -> 100.
+
+
+find_or_create(SessionId, Channels) ->
+    Session = case dps_sessions_manager:find(SessionId) of
+        undefined ->
+            [dps:new(Channel) || Channel <- Channels],
+            Session_ = dps_sessions_manager:create(SessionId),
+            dps_session:add_channels(Session_, Channels),
+            Session_;
+        Session_ ->
+            Session_
+    end,
+    Session.
+
+
 
 
 add_channels(Session, Channels) when is_pid(Session) ->

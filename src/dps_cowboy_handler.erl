@@ -1,4 +1,5 @@
 -module(dps_cowboy_handler).
+-include_lib("eunit/include/eunit.hrl").
 
 
 -export([init/3, handle/2, terminate/2]).
@@ -29,19 +30,10 @@ json_headers() ->
 
 handle(Req, poll) ->
   {RawChannels, Req2} = cowboy_req:qs_val(<<"channels">>, Req),
-  Channels = [list_to_binary(L) || L <- string:tokens(binary_to_list(RawChannels), ",")],
-
+  Channels = binary:split(RawChannels, <<",">>, [global]),
 
   {SessionId, Req3} = cowboy_req:qs_val(<<"session">>, Req2),
-  Session = case dps_sessions_manager:find(SessionId) of
-    undefined ->
-      [dps:new(Channel) || Channel <- Channels],
-      Session_ = dps_sessions_manager:create(SessionId),
-      dps_session:add_channels(Session_, Channels),
-      Session_;
-    Session_ ->
-      Session_
-  end,
+  Session = dps_session:find_or_create(SessionId, Channels),
   Messages = dps_session:fetch(Session),
   {ok, Req4} = cowboy_req:reply(200, [], Messages, Req3),
   {ok, Req4, poll};
