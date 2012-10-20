@@ -38,10 +38,10 @@ teardown(#env{sess = Session}) ->
 
 
 send(Session, Messages) ->
-  [Session ! {dps_msg, test_channel, Msg} || Msg <- Messages].
+  [Session ! {dps_msg, test_channel, 1, [Msg]} || Msg <- Messages].
 
 test_session_simple_fast_fetch(#env{sess = Session}) ->
-  Session ! {dps_msg, test_channel, message1},
+  send(Session, [message1]),
   ?assertEqual({ok, 1, [message1]}, dps_session:fetch(Session, 0)).
 
 test_session_proper_order(#env{sess = Session}) ->

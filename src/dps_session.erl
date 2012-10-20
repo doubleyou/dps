@@ -99,14 +99,14 @@ handle_call(Msg, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({dps_msg, _Tag, Message}, State = #state{waiters = Waiters, messages = Messages, seq = Seq}) ->
-    [gen_server:reply(From, {ok, Seq+1, [Message]}) || From <- Waiters],
+handle_info({dps_msg, _Tag, _LastTS, NewMessages}, State = #state{waiters = Waiters, messages = Messages, seq = Seq}) ->
+    [gen_server:reply(From, {ok, Seq+length(NewMessages), NewMessages}) || From <- Waiters],
     Limit = limit(),
-    NewMessages = case length(Messages) of
-        Len when Len >= 2*Limit -> element(1,lists:split(Limit,[Message|Messages]));
-        _ -> [Message|Messages]
+    Messages1 = case length(Messages) + length(NewMessages) of
+        Len when Len >= 2*Limit -> element(1,lists:split(Limit,NewMessages ++ Messages));
+        _ -> NewMessages ++ Messages
     end,
-    {noreply, State#state{seq = Seq + 1, messages = NewMessages}};
+    {noreply, State#state{seq = Seq + length(NewMessages), messages = Messages1}};
 handle_info(timeout, #state{waiters = []} = State) ->
     {stop, normal, State};
 handle_info(timeout, #state{timer = OldTimer} = State) ->
@@ -114,7 +114,7 @@ handle_info(timeout, #state{timer = OldTimer} = State) ->
     Timer = erlang:send_after(?TIMEOUT, self(), timeout),
     {noreply, State#state{timer = Timer}};
 handle_info(_Info, State) ->
-    {noreply, State}.
+    {stop, {unknown_message, _Info}, State}.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
