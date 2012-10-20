@@ -68,8 +68,9 @@ function handle_reply(reply) {
 function poll(number, last_ts) {
   $.ajax({
     url : "http://"+servers[number] + "/poll",
-    data: {seq : last_ts, session : session, channels : "main,chan1,chan2"},
+    data: {seq : last_ts, session : window.session, channels : "main,chan1,chan2"},
     dataType : "json",
+    method : "get",
     error: function(xhr, code) {
       console.log("error on "+servers[number] + ": "+code)
       // if(code == "timeout") {
@@ -86,7 +87,7 @@ function poll(number, last_ts) {
       $("#server_list .connecting").removeClass("connecting").addClass("connected");
       handle_reply(reply);
       setTimeout(function() {
-        poll(number, reply.ts);
+        poll(number, reply.seq);
       }, 100);
     }
   });
