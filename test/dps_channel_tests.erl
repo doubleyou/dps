@@ -14,8 +14,18 @@ dps_channel_test_() ->
     [{atom_to_list(F), fun ?MODULE:F/0} || F <- TestFunctions]
   }.
 
+dps_channel1_test_() ->
+  TestFunctions = [F || {F,0} <- ?MODULE:module_info(exports),
+                            lists:prefix("test1_", atom_to_list(F))],
+  {foreach,
+    fun setup1/0,
+    fun teardown1/1,
+    [{atom_to_list(F), fun ?MODULE:F/0} || F <- TestFunctions]
+  }.
+
+
 setup() ->
-  Modules = [],
+  Modules = [dps_channel_sup, dps_channel, dps_util],
   meck:new(Modules, [{passthrough, true}]),
   gen_event:delete_handler(error_logger, error_logger_tty_h, []),
   application:start(dps),
@@ -29,75 +39,211 @@ teardown({Modules}) ->
 
 
 
+setup1() ->
+  gen_event:delete_handler(error_logger, error_logger_tty_h, []),
+  application:start(dps),
+  ok.
+
+
+teardown1(ok) ->
+  application:stop(dps),
+  ok.
+
+
+prepend_sorted_test_() ->
+  [
+  ?_assertEqual([{2,b},{1,a}], dps_channel:prepend_sorted({2,b}, [{1,a}])),
+  ?_assertEqual([{2,b},{1,a}], dps_channel:prepend_sorted({1,a}, [{2,b}])),
+  ?_assertEqual([{3,c},{2,b},{1,a}], dps_channel:prepend_sorted({3,c}, [{2,b},{1,a}])),
+  ?_assertEqual([{3,c},{2,b},{1,a}], dps_channel:prepend_sorted({2,b}, [{3,c},{1,a}])),
+  ?_assertEqual([{4,d},{3,c},{2,b},{1,a}], dps_channel:prepend_sorted({2,b}, [{4,d},{3,c},{1,a}])),
+  ?_assertEqual([{4,d},{3,c},{2,b},{1,a}], dps_channel:prepend_sorted({2,b}, [{4,d},{3,c},{2,b},{1,a}]))
+  ].
+
+
+messages_newer_test_() ->
+  [
+    ?_assertEqual([], dps_channel:messages_newer([{4,d},{3,c},{2,b},{1,a}],4)),
+    ?_assertEqual([d], dps_channel:messages_newer([{4,d},{3,c},{2,b},{1,a}],3)),
+    ?_assertEqual([c,d], dps_channel:messages_newer([{4,d},{3,c},{2,b},{1,a}],2)),
+    ?_assertEqual([b,c,d], dps_channel:messages_newer([{4,d},{3,c},{2,b},{1,a}],1)),
+    ?_assertEqual([a,b,c,d], dps_channel:messages_newer([{4,d},{3,c},{2,b},{1,a}],0))
+  ].
+
 test_channel_publish() ->
   dps:new(test_channel),
-  ?assertEqual(ok, dps_channel:publish(test_channel, message)),
+  meck:expect(dps_util, ts, fun() -> 123456 end),
+  ?assertEqual(123456, dps_channel:publish(test_channel, message)),
   ok.
 
-test_channel_receive_published_messages() ->
+test_channel_get_all_messages() ->
   dps:new(test_channel),
-  dps:subscribe(test_channel),
-  dps:publish(test_channel, message1),
+  meck:expect(dps_util, ts, fun() -> 1 end),
+  dps_channel:publish(test_channel, message1),
+
+  meck:expect(dps_util, ts, fun() -> 2 end),
+  dps_channel:publish(test_channel, message2),
+
+  ?assertEqual({ok, 2, [message1, message2]}, dps_channel:messages(test_channel, 0)),
+  ok.
+
+
+test_channel_refetch_new_messages() ->
+  dps:new(test_channel),
+  meck:expect(dps_util, ts, fun() -> 1 end),
+  dps_channel:publish(test_channel, message1),
+
+  meck:expect(dps_util, ts, fun() -> 2 end),
+  dps_channel:publish(test_channel, message2),
+
+  meck:expect(dps_util, ts, fun() -> 3 end),
+  dps_channel:publish(test_channel, message3),
+
+  meck:expect(dps_util, ts, fun() -> 4 end),
+  dps_channel:publish(test_channel, message4),
+
+
+  ?assertEqual({ok, 4, [message3, message4]}, dps_channel:messages(test_channel, 2)),
+  ok.
+
+
+
+
+test1_channel_messages_limit() ->
+  dps:new(test_channel),
+  TotalLimit = dps_channel:messages_limit(),
+
+  LastTS1 = lists:foldl(fun(I, PrevTS) ->
+    TS = dps_channel:publish(test_channel, {message, I}),
+    ?assertMatch(_ when TS > PrevTS, {TS,PrevTS}),
+    TS
+  end, 0, lists:seq(1, TotalLimit)),
+  ?assertMatch({ok, _, Msg} when length(Msg) == TotalLimit, dps_channel:messages(test_channel, 0)),
+
+  _LastTS2 = lists:foldl(fun(I, PrevTS) ->
+    TS = try dps_channel:publish(test_channel, {message, I})
+    catch
+      Class:Error -> erlang:raise(Class, {publish,test_channel,I,Error}, erlang:get_stacktrace())
+    end,
+    ?assertMatch(_ when TS > PrevTS, {TS,PrevTS}),
+    TS
+  end, LastTS1, lists:seq(TotalLimit+1, TotalLimit*5)),
+
+  {ok, _, Messages} = dps_channel:messages(test_channel, 0),
+  ?assertMatch(Len when Len < TotalLimit*2, length(Messages)),
+
+  Numbers = [I || {message, I} <- Messages],
+  % ?assertEqual(2, lists:min(Numbers)),
+  case lists:min(Numbers) of
+    A when A =< TotalLimit -> ?debugFmt("Messages: ~240p~n", [Numbers]);
+    _ -> ok
+  end,
+  ?assertMatch(Num when Num > TotalLimit, lists:min(Numbers)),
+
+  ok.
+
+
+test_channel_subscribe() ->
+  dps:new(test_channel),
+  Timeout = 100,
+  Self = self(),
+  Child = spawn_link(fun() ->
+    dps_channel:subscribe(test_channel),
+    receive start -> ok after 1000 -> error(start_timeout) end,
+    {dps_msg, test_channel, TS1, [Msg1]} = receive {dps_msg, _, _, _} = R1 -> R1 after Timeout -> error(child_timeout1) end,
+    {dps_msg, test_channel, TS2, [Msg2]} = receive {dps_msg, _, _, _} = R2 -> R2 after Timeout -> error(child_timeout2) end,
+    {dps_msg, test_channel, TS3, [Msg3]} = receive {dps_msg, _, _, _} = R3 -> R3 after Timeout -> error(child_timeout3) end,
+    Self ! {ok, [TS1, TS2, TS3], [Msg1,Msg2,Msg3]},
+    ok
+  end),
+
+  TS1 = dps_channel:publish(test_channel, msg1),
+  TS2 = dps_channel:publish(test_channel, msg2),
+  TS3 = dps_channel:publish(test_channel, msg3),
+  
+  Child ! start,
+
   receive
-    {dps_msg, test_channel, message1} -> ok
+    {ok, Timestamps, Messages} -> 
+      ?assertEqual([msg1,msg2,msg3], Messages),
+      ?assertEqual([TS1,TS2,TS3], Timestamps)
   after
-    100 -> error(no_message_received)
+    Timeout -> error(parent_timeout)
   end,
 
   ok.
 
 
-test_channel_unsubscribe_dead_clients() ->
+test_channel_subscribe_with_old_messages() ->
   dps:new(test_channel),
-  dps:subscribe(test_channel),
-  Pid = dps_channel:find(test_channel),
-  Pid ! {'DOWN', ref, process, self(), normal},
-  gen_server:call(Pid, sync_call),
-  dps:publish(test_channel, message1),
+  TS1 = dps_channel:publish(test_channel, msg1),
+  _TS2 = dps_channel:publish(test_channel, msg2),
+  TS3 = dps_channel:publish(test_channel, msg3),
+
+  dps_channel:subscribe(test_channel, TS1),
+
+  Timeout = 100,
   receive
-    {dps_msg, test_channel, _} -> error(have_not_unsubscribed)
+    {dps_msg, test_channel, LastTS, Messages} ->
+      ?assertEqual(TS3, LastTS),
+      ?assertEqual([msg2, msg3], Messages);
+    Else ->
+      ?debugFmt("else: ~p", [Else]),
+      error(strange_message)
   after
-    10 -> ok
-  end, 
+    Timeout -> error(parent_timeout)
+  end,
   ok.
 
 
 
-test_channel_failing() ->
-  {test_channel, Pid, _} = dps_channels_manager:create(test_channel),
-  ?assertNotEqual(Pid, whereis(dps_channels_manager)),
+test_multi_fetch() ->
+  dps:new(test_channel1),
+  dps:new(test_channel2),
+  dps:new(test_channel3),
 
-  erlang:monitor(process, Pid),
-  erlang:exit(Pid, kill),
+  Self = self(),
+  _Child = spawn_link(fun() ->
+    Reply = dps_channel:multi_fetch([test_channel1, test_channel2, test_channel3], 0, 5000),
+    Self ! {child, Reply}
+  end),
+
+  dps_channel:publish(test_channel1, message1),
+
   receive
-    {'DOWN', _, _, Pid, _} -> ok
-  after 1000 ->
-    error(test_timeout)
+    {child, Reply} ->
+      ?assertMatch({ok, _, Messages} when length(Messages) == 1, Reply)
+  after
+    1000 -> error(parent_timeout)
   end,
 
-  %% We need to make sure that 'DOWN' message reaches manager before our call
-  gen_server:call(dps_channels_manager, sync_call),
+  ok.
 
-  ?assertEqual(undefined, dps_channels_manager:find(test_channel)),
+
+test_proper_last_test_on_empty_multi_fetch() ->
+  dps:new(test_channel1),
+  dps:new(test_channel2),
+  dps:new(test_channel3),
+
+  Reply = dps_channel:multi_fetch([test_channel1, test_channel2, test_channel3], 12345, 5),
+  ?assertEqual({ok, 12345, []}, Reply),
   ok.
 
 
 
-
-
-test5_replication_messages() ->
+test_replication_messages() ->
   dps:new(test_channel),
 
   meck:expect(dps_util, ts, fun() -> 1 end),
-  dps:publish(test_channel, message1),
+  dps_channel:publish(test_channel, message1),
 
   meck:expect(dps_util, ts, fun() -> 3 end),
-  dps:publish(test_channel, message3),
+  dps_channel:publish(test_channel, message3),
 
 
   Self = self(),
   _Child = spawn_link(fun() ->
-    dps:subscribe(test_channel, 3),
+    dps_channel:subscribe(test_channel, 3),
     Self ! go_on,
     receive
       Reply -> Self ! {child, Reply}

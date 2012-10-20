@@ -25,7 +25,7 @@ handle_call(Call, _From, #replicator{} = State) ->
   {stop, {unknown_call, Call}, State}.
 
 
-handle_info({dps_msg, _Tag, Msg}, #replicator{} = State) ->
+handle_info({message, LastTS, Msg}, #replicator{} = State) ->
   NewState = handle_message(Msg, State),
   {noreply, NewState};
 

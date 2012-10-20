@@ -74,7 +74,6 @@ channels() ->
 init(Args) ->
     % Recovery procedure
     ets:new(dps_channel:channels_table(), [public, named_table, set, {keypos, #chan.tag}]),
-    ets:new(dps_channel:clients_table(), [public, named_table, bag]),
     self() ! load_from_siblings,    
     {ok, Args}.
 
@@ -89,8 +88,7 @@ handle_info({'DOWN', _, _, Pid, _}, State) ->
     MS = ets:fun2ms(fun(#chan{tag = Tag, pid = Pid_}) when Pid_ == Pid -> Tag end),
     case ets:select(dps_channel:channels_table(), MS) of
         [Name] ->
-            ets:delete(dps_channel:channels_table(), Name),
-            ets:delete(dps_channel:clients_table(), Name);
+            ets:delete(dps_channel:channels_table(), Name);
         [] ->
             ok
     end,

@@ -41,6 +41,7 @@ window.servers = [
   "localhost:9204"
 ];
 
+window.session = (new Date()).getTime();
 
 function connect(last_ts) {
   $("#server_list .connecting").removeClass("connecting");
@@ -67,7 +68,7 @@ function handle_reply(reply) {
 function poll(number, last_ts) {
   $.ajax({
     url : "http://"+servers[number] + "/poll",
-    data: {ts : last_ts},
+    data: {seq : last_ts, session : session, channels : "main,chan1,chan2"},
     dataType : "json",
     error: function(xhr, code) {
       console.log("error on "+servers[number] + ": "+code)
@@ -98,7 +99,7 @@ function onsubmit() {
   $("#push").find("input").attr("disabled", "disabled");
   $("#flash_error").html("");
   $.ajax({
-    url : this.action,
+    url : this.action + "?channel=main",
     type : "POST",
     data : data,
     contentType : "application/json",

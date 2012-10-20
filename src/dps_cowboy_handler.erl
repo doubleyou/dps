@@ -26,7 +26,7 @@ init({tcp,http},Req,[push]) ->
 json_headers() ->
   [{<<"Content-Type">>, <<"application/json">>},{<<"Access-Control-Allow-Origin">>, <<"*">>},
   {<<"Access-Control-Allow-Methods">>, <<"POST, GET, OPTIONS">>},
-  {<<"Access-Control-Allow-Headers">>, <<"Content-Type">>}].
+  {<<"Access-Control-Allow-Headers">>, <<"Content-Type, Origin, Accept">>}].
 
 join([]) -> [];
 join(Messages) -> join(Messages, true).
@@ -59,8 +59,17 @@ handle(Req, poll) ->
 
 
 handle(Req, push) ->
+  {Method, Req1} = cowboy_req:method(Req),
+  case Method of
+    <<"POST">> ->
+      handle_push(Req1);
+    <<"OPTIONS">> ->
+      handle_push_options(Req1)
+  end.
+
+handle_push(Req) ->
   {ok, Msg, Req1} = cowboy_req:body(Req),
-  try 
+  try  
     jiffy:decode(Msg),
     {Channel, Req2} = cowboy_req:qs_val(<<"channel">>, Req1),
     is_binary(Channel) orelse throw({error,no_channel}),
@@ -77,6 +86,9 @@ handle(Req, push) ->
       {ok, Req5, push}
   end.
 
+handle_push_options(Req) ->
+  {ok, Req1} = cowboy_req:reply(200, json_headers(), "ok\n", Req),
+  {ok, Req1, push}.
 
 terminate(_Req, _State) ->
   ok.
