@@ -75,9 +75,17 @@ function poll_ws(number, last_ts) {
 
     ws.onmessage = function(reply){
       $("#server_list .connecting").removeClass("connecting").addClass("connected");
+      // console.log(reply);
+      // window.zzz = reply;
       reply = JSON.parse(reply.data);
+      last_ts = reply.seq;
       handle_reply(reply);
-    };    
+    };
+
+    ws.onclose = function(close) {
+      window.number = (number + 1) % servers.length;
+      setTimeout(function() {connect(last_ts); }, 500);
+    }
   }
   catch (exception) {
     console.log("WS exception "+exception);

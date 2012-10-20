@@ -107,7 +107,10 @@ websocket_init(_TransportName, Req, _Opts) ->
     {OldSeq_, Req3} = cowboy_req:qs_val(<<"seq">>, Req2, <<"0">>),
     OldSeq = cowboy_http:digits(OldSeq_),
 
-    [dps:subscribe(Channel, OldSeq) || Channel <- Channels],
+    [begin
+      dps:new(Channel),
+      dps:subscribe(Channel, OldSeq) 
+    end || Channel <- Channels],
     {ok, Req3, undefined_state}.
 
 websocket_handle({text, Msg}, Req, State) ->
@@ -118,8 +121,8 @@ websocket_handle(_Data, Req, State) ->
 websocket_info({timeout, _Ref, Msg}, Req, State) ->
     erlang:start_timer(1000, self(), <<"How' you doin'?">>),
     {reply, {text, Msg}, Req, State};
-websocket_info({dps_msg, _Tag, _LastTS, Messages}, Req, State) ->
-    {reply, {text, ["{\"messages\":[", join(Messages), "]}\n"]}, Req, State};
+websocket_info({dps_msg, _Tag, LastTS, Messages}, Req, State) ->
+    {reply, {text, ["{\"seq\":", integer_to_list(LastTS), ",\"messages\":[", join(Messages), "]}\n"]}, Req, State};
 websocket_info(_Info, Req, State) ->
     io:format("Info: ~p~n", [_Info]),
     {ok, Req, State}.

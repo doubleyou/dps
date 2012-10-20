@@ -31,6 +31,9 @@ start_session(Name) ->
   SessionSpec = {Name, {dps_session, start_link, [Name]}, transient, 5000, worker, [dps_session]},
   case supervisor:start_child(dps_sessions_sup, SessionSpec) of
     {ok, P} -> {ok, P};
+    {error, already_present} ->
+      supervisor:delete_child(dps_sessions_sup, Name),
+      start_session(Name);
     {error, {already_started, P}} -> {ok, P}
   end.
 
