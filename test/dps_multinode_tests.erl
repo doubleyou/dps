@@ -100,7 +100,7 @@ test_replication_works(#env{slaves = [{Slave,_,_}|_]}) ->
   dps:publish(chan1, message1),
 
   receive
-    {dps_msg, chan1, message1} -> ok;
+    {dps_msg, chan1, _LastTS, [message1]} -> ok;
     Else -> error({strange,Else})
   after
     500 ->

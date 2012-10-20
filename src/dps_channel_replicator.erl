@@ -4,8 +4,6 @@
 -export([init/1, handle_call/3, handle_info/2, terminate/2]).
 
 
--define(REPLICATION_LAG, 50).
-
 
 start_link(Tag) ->
   gen_server:start_link(?MODULE, [Tag], []).
@@ -22,32 +20,33 @@ handle_call({message, LastTS1, Msg}, _From, #replicator{} = State) ->
   {reply, ok, handle_message({message, LastTS1, Msg}, State)};
 
 handle_call(Call, _From, #replicator{} = State) ->
-  {stop, {unknown_call, Call}, State}.
+  {reply, {error, {unknown_call, Call}}, State}.
 
 
-handle_info({message, LastTS, Msg}, #replicator{} = State) ->
-  NewState = handle_message(Msg, State),
+handle_info({message, LastTS1, Msg}, #replicator{} = State) ->
+  NewState = handle_message({message, LastTS1, Msg}, State),
   {noreply, NewState};
 
 handle_info(_Info, #replicator{} = State) ->
-  {stop, {unknown_message, _Info}, State}.
+
+  {noreply, State}.
 
 
 terminate(_,_) -> ok.
 
 
-collect_all(Messages) ->
+collect_all(LastTS1, Messages) ->
   receive
-    {dps_msg, _Tag, Msg} -> collect_all([Msg|Messages])
+    {LastTS2, Msg} -> collect_all(LastTS2, [Msg|Messages])
   after
-    ?REPLICATION_LAG -> lists:reverse(Messages)
+    50 -> {LastTS1, Messages}
   end.
 
 
-handle_message(Msg, #replicator{tag = Tag} = State) ->
-  Messages = collect_all([Msg]),
+handle_message({message, LastTS1, Msg}, #replicator{tag = Tag} = State) ->
+  {LastTS, Messages} = collect_all(LastTS1, [Msg]),
   {Channels, _} = rpc:multicall(nodes(), dps_channel, find, [Tag]),
-  [try dps_channel:replication_messages(Pid, Messages)
+  [try dps_channel:replicate_messages(Pid, LastTS, Messages)
   catch
     exit:{nodedown,_} -> ok
   end || Pid <- Channels, is_pid(Pid)],

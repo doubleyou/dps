@@ -67,10 +67,9 @@ function handle_reply(reply) {
 
 function poll(number, last_ts) {
   $.ajax({
-    url : "http://"+servers[number] + "/poll",
-    data: {seq : last_ts, session : window.session, channels : "main,chan1,chan2"},
+    url : "http://"+servers[number] + "/poll?seq="+last_ts+"&session="+window.session+"&channels=main,chan1,chan2",
     dataType : "json",
-    method : "get",
+    type : "POST",
     error: function(xhr, code) {
       console.log("error on "+servers[number] + ": "+code)
       // if(code == "timeout") {

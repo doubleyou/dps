@@ -36,6 +36,7 @@ join([Message|Messages], false)-> [",",Message|join(Messages, false)];
 join([], _) -> [].
 
 handle(Req, poll) ->
+  {<<"POST">>, _} = cowboy_req:method(Req),
   try
     {RawChannels, Req2} = cowboy_req:qs_val(<<"channels">>, Req),
     is_binary(RawChannels) orelse throw({error,no_channels}),
