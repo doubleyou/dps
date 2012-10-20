@@ -48,13 +48,12 @@ function connect(last_ts) {
   $("#server_list .connected").removeClass("connected");
   $("#server"+number).addClass("connecting");
 
-  poll(number, last_ts);
-  // if(window.WebSocket) {
-  //   var ws = new WebSocket("ws://"+servers[0] + "/poll");
-  //   ws.onerror = function() {
-
-  //   }
-  // }
+  if(window.navigator.appVersion.indexOf("Safari") != -1) {
+    poll_ws(number, last_ts);
+  } else {
+    poll(number, last_ts);
+  }
+  
 }
 
 function handle_reply(reply) {
@@ -62,6 +61,26 @@ function handle_reply(reply) {
   for(i = reply.messages.length - 1; i >= 0; i--) {
     var text = "<li>"+reply.messages[i].body+"</li>";
     $("#messages").prepend(text);
+  }
+}
+
+function poll_ws(number, last_ts) {
+  var url = "ws://"+servers[number] + "/poll?seq="+last_ts+"&session="+window.session+"&channels=main,chan1,chan2";
+
+  try {
+    window.ws = new WebSocket(url);
+    ws.onerror = function() {
+      console.log("WS error");
+    }
+
+    ws.onmessage = function(reply){
+      $("#server_list .connecting").removeClass("connecting").addClass("connected");
+      reply = JSON.parse(reply.data);
+      handle_reply(reply);
+    };    
+  }
+  catch (exception) {
+    console.log("WS exception "+exception);
   }
 }
 
