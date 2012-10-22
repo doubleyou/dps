@@ -113,10 +113,13 @@ stats_collector() ->
     [{messages, MessageCount}] = ets:lookup(stats, messages),
     [{_, TotalMessageCount}] = ets:lookup(stats, total_messages),
     [{start_at, StartAt}] = ets:lookup(stats, start_at),
+    [{_, Timeouts}] = ets:lookup(stats, timeouts),
     _Delta = timer:now_diff(erlang:now(), StartAt) div 1000,
-    io:format("~6B publish (~7B), ~6B receive (~10B)~n", [PublishCount, TotalPublishCount, MessageCount, TotalMessageCount]),
+    io:format("~6B publish (~7B), ~6B receive (~10B), timeouts ~5B ~n", 
+        [PublishCount, TotalPublishCount, MessageCount, TotalMessageCount, Timeouts]),
     ets:insert(stats, {publishes, 0}),
     ets:insert(stats, {messages, 0}),
+    ets:insert(stats, {timeouts, 0}),
     ets:insert(stats, {start_at, erlang:now()}),
     stats_collector().
 
