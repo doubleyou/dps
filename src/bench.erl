@@ -149,17 +149,23 @@ start_push(#state{channels = Channels, host = Host, publish_interval = Interval}
     catch
         error:{badmatch,{error,timeout}} ->
             ets:update_counter(stats, timeouts, 1),
+            close_push(C),
             timer:sleep(500),
             start_push(State);
         error:{badmatch,{error,etimedout}} ->
             ets:update_counter(stats, timeouts, 1),
+            close_push(C),
             timer:sleep(50),
             start_push(State);
         error:{badmatch,{error,closed}} ->
+            close_push(C),
             start_push(State);
         Class:Error ->
             io:format("Push ~p:~p~n~p~n", [Class, Error, erlang:get_stacktrace()])
     end.
+
+close_push(C) ->
+    (catch gen_tcp:close(element(4,C))).
 
 push(C1, URL, [Chan|Channels], Interval) ->
     {ok,C2} = cowboy_client:request(<<"POST">>, <<URL/binary, "?channel=", Chan/binary>>, [], <<"{\"text\":\"y u no love node.js?\"}">>, C1),
