@@ -161,7 +161,11 @@ start_push(#state{channels = Channels, host = Host, publish_interval = Interval}
 push(C1, URL, [Chan|Channels], Interval) ->
     {ok,C2} = cowboy_client:request(<<"POST">>, <<URL/binary, "?channel=", Chan/binary>>, [], <<"{\"text\":\"y u no love node.js?\"}">>, C1),
     {ok, Code, _Headers, C3} = cowboy_client:response(C2),
-    Code == 200 orelse throw({invalid_push_response,Code,_Headers, C3}),
+    case Code of
+        200 -> ok;
+        429 -> ets:update_counter(stats, timeouts, 1);
+        _ -> throw({invalid_push_response,Code,_Headers, C3})
+    end,
     {done, C4} = cowboy_client:skip_body(C3),
 
     % httpc:request(post, {URL, [], "text/plain", Chan ++ "|y u no love node.js?"}, [{timeout, 3000}], [], push_httpc),

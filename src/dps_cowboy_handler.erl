@@ -79,6 +79,9 @@ handle_push(Req) ->
     {ok, Req3} = cowboy_req:reply(200, json_headers(), <<"true\n">>, Req2),
     {ok, Req3, push}
   catch
+    throw:dps_busy ->
+      {ok, Req5} = cowboy_req:reply(429, json_headers(), <<"{\"error\" : \"overloaded\"}\n">>, Req1),
+      {ok, Req5, push};
     throw:{error,{_,invalid_json}} ->
       {ok, Req5} = cowboy_req:reply(400, json_headers(), <<"{\"error\" : \"invalid_json\"}\n">>, Req1),
       {ok, Req5, push};

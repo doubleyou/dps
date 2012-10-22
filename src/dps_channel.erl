@@ -60,8 +60,11 @@ channels_table() -> dps_channels_table.
 -spec publish(Tag :: dps:tag(), Msg :: dps:message()) -> TS :: dps:timestamp().
 publish(Tag, Msg) ->
     TS = dps_util:ts(),
-    {_,Messages} = process_info(find(Tag),messages),
-    Len = length(Messages),
+    {_,Len} = process_info(find(Tag),message_queue_len),
+    if 
+        Len > 1000 -> throw(dps_busy);
+        Len > 100 -> timer:sleep(20*Len);
+    true -> ok end,
     % FIXME: this is a debug output to notify busy channels
     % case process_info(find(Tag), messages) of
     %     {messages, Messages} when length(Messages) > 20 ->
@@ -72,8 +75,8 @@ publish(Tag, Msg) ->
     try gen_server:call(find(Tag), {publish, Msg, TS}, 3000)
     catch
       exit:{timeout,_} = Error ->
-        ?debugFmt("Error timeout in publish ~B to ~s with ~B messages ~p~n:~n~p~n", [TS, Tag, Len, Messages, process_info(find(Tag))]),
-        erlang:raise(exit, Error, erlang:get_stacktrace())
+        % ?debugFmt("Error timeout in publish ~B to ~s with ~B messages ~p~n:~n~p~n", [TS, Tag, Len, Messages, process_info(find(Tag))]),
+        erlang:raise(exit, {publish,Tag,Error}, erlang:get_stacktrace())
     end,
     TS.
 
