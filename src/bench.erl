@@ -5,9 +5,9 @@
 
 -define(OPTIONS, [
     {clients, 4000},
-    {channels, 30},
+    {channels, 500},
     {channels_per_client, {1, 4}},
-    {pub_interval, 400},
+    {pub_interval, 2000},
     {hosts, ["localhost:9201"]}
 ]).
 
@@ -114,7 +114,7 @@ stats_collector() ->
     [{_, TotalMessageCount}] = ets:lookup(stats, total_messages),
     [{start_at, StartAt}] = ets:lookup(stats, start_at),
     _Delta = timer:now_diff(erlang:now(), StartAt) div 1000,
-    io:format("~6B publish (~7B), ~6B receive (~7B)~n", [PublishCount, TotalPublishCount, MessageCount, TotalMessageCount]),
+    io:format("~6B publish (~7B), ~6B receive (~10B)~n", [PublishCount, TotalPublishCount, MessageCount, TotalMessageCount]),
     ets:insert(stats, {publishes, 0}),
     ets:insert(stats, {messages, 0}),
     ets:insert(stats, {start_at, erlang:now()}),
@@ -207,6 +207,8 @@ poll(C1, URL, OldSeq) ->
             timer:sleep(500),
             throw(restart_poll);
         {error, timeout} ->
+            throw(restart_poll);
+        {error, closed} ->
             throw(restart_poll)
     end.
 
