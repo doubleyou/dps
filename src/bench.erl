@@ -160,6 +160,11 @@ start_push(#state{channels = Channels, host = Host, publish_interval = Interval}
         error:{badmatch,{error,closed}} ->
             close_push(C),
             start_push(State);
+        throw:{invalid_push_response, Code, _Headers, _} ->
+            close_push(C),
+            io:format("Error response: ~p~n", [Code]),
+            timer:sleep(500),
+            start_push(State);
         Class:Error ->
             io:format("Push ~p:~p~n~p~n", [Class, Error, erlang:get_stacktrace()])
     end.

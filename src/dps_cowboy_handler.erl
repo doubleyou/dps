@@ -13,7 +13,7 @@
 init({tcp, http}, Req, [poll]) ->
   {Upgrade, Req1} = cowboy_req:header(<<"upgrade">>, Req),
   case Upgrade of
-    <<"WebSocket">> ->
+    <<"websocket">> ->
       {upgrade, protocol, cowboy_websocket};
     undefined ->
       {ok, Req1, poll}
