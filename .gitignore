@@ -1,7 +1,0 @@
-ebin/*
-erl_crash.dump
-.eunit
-deps/
-.dps.plt
-node_modules/
-.vagrant
